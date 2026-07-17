@@ -22,7 +22,7 @@ int main(int argc, char *argv[])
     int size_int;
     char selectd_file[MAX];
     int str_len = 0;
-    int idx = 0, read_len = 0;
+    int read_len = 0;
 
     struct sockaddr_in serv_adr;
 
@@ -40,30 +40,19 @@ int main(int argc, char *argv[])
     serv_adr.sin_port = htons(atoi(argv[2]));
 
     connect(sd, (struct sockaddr *)&serv_adr, sizeof(serv_adr));
-    printf("Connection done\n");
+    printf("!Connection done!\n");
 
     while (str_len < LIST_SIZE)
     {
         read_len = read(sd, size, sizeof(size));
         str_len += read_len;
     }
-    printf("Receive file size: %s\n", size);
+    printf("[Received file list size]\n%s\n", size);
 
     size_int = atoi(size);
     str_len = 0;
-    printf("Convert file size to int: %d\n", size_int);
+    // printf("Convert file size to int: %d\n", size_int);
 
-    // while (str_len < size_int && (read_len = read(sd, &file_list[idx], BUF_SIZE)))
-    // {
-    // 	if (read_len == -1)
-    // 	{
-    // 		error_handling("read() error!");
-    // 		break;
-    // 	}
-    // 	printf("%s", file_list);
-    // 	idx += read_len;
-    // 	str_len += read_len;
-    // }
     while ((str_len < size_int) && (read_len = read(sd, d_name, BUF_SIZE)))
     {
         if (read_len == -1)
@@ -74,19 +63,19 @@ int main(int argc, char *argv[])
         strcat(file_list, d_name);
         str_len += read_len;
     }
-    printf("Receive file list: %s\n", file_list);
+    printf("[Received file list]\n%s\n\n\n", file_list);
 
-    printf("Select file > ");
+    printf("=== Select file > ");
     scanf("%s", selectd_file);
     write(sd, selectd_file, strlen(selectd_file));
-    printf("Send selected file\n");
+    printf("\n\n!!Send selected file!!\n\n");
 
     fp = fopen(selectd_file, "wb");
 
     while ((read_cnt = read(sd, buf, BUF_SIZE)) != 0)
         fwrite((void *)buf, 1, read_cnt, fp);
 
-    puts("Received file data");
+    puts("!!Received selected file content!!\n\n");
     write(sd, "Thank you", 10);
     fclose(fp);
     close(sd);

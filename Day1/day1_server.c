@@ -18,11 +18,11 @@ int main(int argc, char *argv[])
     char buf[BUF_SIZE];
     int read_cnt;
     struct dirent *entry;
-    char file_list[MAX]; // 파일 리스트
-    int file_count = 0;  // 파일 총 개수
+    char file_list[MAX];
+    // int file_count = 0;
     int size_int;
-    char size[LIST_SIZE];         // 맨앞에 보낼 사이즈
-    char selected_file[MAX] = ""; // 클라이언트가 선택한 파일 이름
+    char size[LIST_SIZE];
+    char selected_file[MAX] = "";
 
     struct sockaddr_in serv_adr, clnt_adr;
     socklen_t clnt_adr_sz;
@@ -46,20 +46,13 @@ int main(int argc, char *argv[])
             continue;
         strcat(file_list, entry->d_name);
         strcat(file_list, "\n");
-        printf("%s\n", entry->d_name);
-        // strcpy(file_list, entry->d_name);
-        // strcat(file_list, "\n");
-        file_count++;
+        // printf("%s\n", entry->d_name);
+        // file_count++;
     }
 
-    printf("Total num of file: %d\n", file_count);
+    // printf("Total num of file: %d\n", file_count);
 
-    // for (int i = 0; i < file_count; i++)
-    // {
-    //     strcpy(file_list, entry->d_name);
-    //     strcat(file_list, "\n");
-    // }
-    printf("File list 배열에 각각 저장 완료: %s\n", file_list);
+    // printf("Saved to file_list: %s\n", file_list);
 
     closedir(dir);
 
@@ -79,27 +72,14 @@ int main(int argc, char *argv[])
     size_int = strlen(file_list);
     sprintf(size, "%d", size_int);
     write(clnt_sd, size, sizeof(size));
-    printf("Send list size: %s\n", size);
-    // int write_res = write(clnt_sd, size, sizeof(size));
-    // if (write_res > 0)
-    //     printf("Send list size: %s\n", size);
-
-    // while (1)
-    // {
-    //     if (strlen(file_list) < BUF_SIZE)
-    //     {
-    //         write(clnt_sd, file_list, strlen(file_list));
-    //     }
-    //     write(clnt_sd, file_list, BUF_SIZE);
-    // }
-    // printf("Send file list: %s\n", file_list);
+    printf("[Send file list size]\n%s\n", size);
 
     write(clnt_sd, file_list, strlen(file_list));
 
-    printf("Send file list: %s\n", file_list);
+    printf("[Send file list]\n%s\n\n\n", file_list);
 
     read(clnt_sd, selected_file, sizeof(selected_file));
-    printf("Receive select file name: %s\n", selected_file);
+    printf("[Receive select file name]\n%s\n\n\n", selected_file);
 
     fp = fopen(selected_file, "rb");
 
@@ -113,11 +93,11 @@ int main(int argc, char *argv[])
         }
         write(clnt_sd, buf, BUF_SIZE);
     }
-    printf("Send selectd file content\n");
+    printf("!!Send selectd file content!!\n\n\n");
 
     shutdown(clnt_sd, SHUT_WR);
     read(clnt_sd, buf, BUF_SIZE);
-    printf("Message from client: %s \n", buf);
+    printf("=== Message from client: %s \n", buf);
 
     fclose(fp);
     close(clnt_sd);
