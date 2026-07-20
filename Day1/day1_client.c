@@ -16,7 +16,7 @@ int main(int argc, char *argv[])
     FILE *fp;
     char buf[BUF_SIZE];
     int read_cnt;
-    char file_list[MAX];
+    char file_list[MAX] = "";
     char d_name[BUF_SIZE];
     char size[LIST_SIZE];
     int size_int;
@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
     str_len = 0;
     // printf("Convert file size to int: %d\n", size_int);
 
-    while ((str_len < size_int) && (read_len = read(sd, d_name, BUF_SIZE)))
+    while ((str_len < size_int) && (read_len = read(sd, d_name, 1)))
     {
         if (read_len == -1)
         {
