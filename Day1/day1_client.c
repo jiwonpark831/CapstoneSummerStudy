@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
     str_len = 0;
     // printf("Convert file size to int: %d\n", size_int);
 
-    while ((str_len < size_int) && (read_len = read(sd, d_name, 1)))
+    while ((str_len < size_int) && (read_len = read(sd, d_name, BUF_SIZE)))
     {
         if (read_len == -1)
         {
@@ -61,6 +61,7 @@ int main(int argc, char *argv[])
             break;
         }
         strcat(file_list, d_name);
+        memset(d_name, 0, sizeof(d_name));
         str_len += read_len;
     }
     printf("[Received file list]\n%s\n\n\n", file_list);
