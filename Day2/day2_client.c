@@ -1,3 +1,7 @@
+// tc 테스트 못함
+// file name을 안보내서 수정해서 file write 다시 봐야함
+// 버퍼랑 문자 처리 디테일 다시 봐야함
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,7 +10,9 @@
 #include <sys/socket.h>
 #include <time.h>
 
-#define BUF_SIZE 1024
+#define BUF_SIZE 256
+#define NAME_SIZE 30
+
 void error_handling(char *message);
 
 struct Pkt
@@ -14,6 +20,8 @@ struct Pkt
     int seq;
     int type; // 0이면 ptk, 1이면 ack
     char msg[BUF_SIZE];
+    time_t s_time;
+    // char f_name[NAME_SIZE];
 };
 
 int main(int argc, char *argv[])
@@ -28,9 +36,10 @@ int main(int argc, char *argv[])
     int sequence = 0;
     char message[BUF_SIZE];
     time_t start_time;
-    time_t end_time;
-    double spend_time;
-    int size = 0;
+    FILE *fp;
+    int res;
+
+    char file_name[NAME_SIZE];
 
     struct sockaddr_in serv_adr, from_adr;
     if (argc != 3)
@@ -52,43 +61,63 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        if ((str_len != -1))
+        memset(file_name, 0, sizeof(file_name));
+        printf("Insert file name(q to quit) > ");
+        scanf("%s", file_name);
+        if (!strcmp(file_name, "q\n") || !strcmp(file_name, "Q\n"))
+            break;
+        fp = fopen(file_name, "rb");
+        if (fp != NULL)
         {
-            fputs("Insert message(q to quit) > ", stdout);
-            fgets(message, sizeof(message), stdin);
-            if (!strcmp(message, "q\n") || !strcmp(message, "Q\n"))
-                break;
+            if ((str_len != -1))
+            {
+                while (res = fread(message, sizeof(char), BUF_SIZE, fp))
+                {
+                    strcpy(send_pkt.msg, message);
+                    // printf("%s\n", send_pkt.msg);
+                    send_pkt.seq = sequence++;
+                    send_pkt.type = 0;
+                    // strcpy(send_pkt.f_name, file_name);
+                    // printf("file_name: %s\n", send_pkt.f_name);
+                    start_time = time(NULL);
+                    send_pkt.s_time = start_time;
+                    sendto(sock, &send_pkt, sizeof(send_pkt), 0,
+                           (struct sockaddr *)&serv_adr, sizeof(serv_adr));
+                    printf("[Send PCK to Receiver] type: %s, sequence: %d\n", (send_pkt.type ? "ACK" : "PCK"), send_pkt.seq);
 
-            strcpy(send_pkt.msg, message);
-            send_pkt.seq = sequence++;
-            send_pkt.type = 0;
+                    memset(send_pkt.msg, 0, sizeof(send_pkt.msg));
+                    memset(file_name, 0, sizeof(file_name));
 
-            start_time = time(NULL);
-            sendto(sock, &send_pkt, sizeof(send_pkt), 0,
-                   (struct sockaddr *)&serv_adr, sizeof(serv_adr));
+                    adr_sz = sizeof(from_adr);
+                    str_len = recvfrom(sock, &receive_pkt, sizeof(receive_pkt), 0,
+                                       (struct sockaddr *)&from_adr, &adr_sz);
+                    if ((receive_pkt.type == 1))
+                    {
+                        printf("[Receive ACK from Receiver] type: %s, sequence: %d\n\n\n", (receive_pkt.type ? "ACK" : "PCK"), receive_pkt.seq);
+                    }
+                }
+            }
+            else
+            {
+                printf("== SEND PKT ONE MORE TIME.. ==\n");
+                sendto(sock, &send_pkt, sizeof(send_pkt), 0,
+                       (struct sockaddr *)&serv_adr, sizeof(serv_adr));
+                printf("[Send PCK to Receiver] type: %s, sequence: %d\n", (send_pkt.type ? "ACK" : "PCK"), send_pkt.seq);
+
+                adr_sz = sizeof(from_adr);
+                str_len = recvfrom(sock, &receive_pkt, sizeof(receive_pkt), 0,
+                                   (struct sockaddr *)&from_adr, &adr_sz);
+                if ((receive_pkt.type == 1))
+                {
+                    printf("[Receive ACK from Receiver] type: %s, sequence: %d\n\n\n", (receive_pkt.type ? "ACK" : "PCK"), receive_pkt.seq);
+                }
+            }
+            fclose(fp);
         }
         else
         {
-            printf("== SEND PKT ONE MORE TIME.. ==\n");
-            sendto(sock, &send_pkt, sizeof(send_pkt), 0,
-                   (struct sockaddr *)&serv_adr, sizeof(serv_adr));
-        }
-
-        printf("[Send PCK to Receiver] type: %s, sequence: %d, message: %s", (send_pkt.type ? "ACK" : "PCK"), send_pkt.seq, send_pkt.msg);
-
-        adr_sz = sizeof(from_adr);
-        str_len = recvfrom(sock, &receive_pkt, sizeof(receive_pkt), 0,
-                           (struct sockaddr *)&from_adr, &adr_sz);
-        end_time = time(NULL);
-        if ((receive_pkt.type == 1) && (receive_pkt.seq == send_pkt.seq))
-        {
-            printf("[Receive ACK from Receiver] type: %s, sequence: %d, message: %s", (receive_pkt.type ? "ACK" : "PCK"), receive_pkt.seq, receive_pkt.msg);
-            size += sizeof(receive_pkt.type);
-            size += sizeof(receive_pkt.seq);
-            size += strlen(receive_pkt.msg);
-            spend_time = difftime(end_time, start_time);
-            printf("[Result] size: %d, time: %.2f\t %.2f dps\n\n\n", size, spend_time, (size / spend_time));
-            size = 0;
+            printf("Cannot find %s\n", file_name);
+            return 0;
         }
     }
     close(sock);

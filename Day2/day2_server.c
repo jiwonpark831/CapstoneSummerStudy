@@ -4,8 +4,10 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <time.h>
 
-#define BUF_SIZE 1024
+#define BUF_SIZE 256
+#define NAME_SIZE 30
 void error_handling(char *message);
 
 struct Pkt
@@ -13,6 +15,8 @@ struct Pkt
     int seq;
     int type; // 0이면 ptk, 1이면 ack
     char msg[BUF_SIZE];
+    time_t s_time;
+    char f_name[NAME_SIZE];
 };
 
 int main(int argc, char *argv[])
@@ -23,6 +27,12 @@ int main(int argc, char *argv[])
     struct Pkt receive_pkt;
     struct Pkt send_pkt;
     int sequence = 0;
+    time_t end_time;
+    double spend_time;
+    int size = 0;
+    FILE *fp;
+    int res;
+    char buf[2048];
 
     struct sockaddr_in serv_adr, clnt_adr;
     if (argc != 2)
@@ -47,31 +57,55 @@ int main(int argc, char *argv[])
     {
         clnt_adr_sz = sizeof(clnt_adr);
 
-        str_len = recvfrom(serv_sock, &receive_pkt, sizeof(receive_pkt), 0,
-                           (struct sockaddr *)&clnt_adr, &clnt_adr_sz);
-        printf("[Receive PCK from Sender] type: %s, sequence: %d, message: %s", (receive_pkt.type ? "ACK" : "PCK"), receive_pkt.seq, receive_pkt.msg);
+        // str_len = recvfrom(serv_sock, &receive_pkt, sizeof(receive_pkt), 0,
+        //                    (struct sockaddr *)&clnt_adr, &clnt_adr_sz);
 
-        // ACK를 안 받은 걸로 치고 넘어가서 sender가 재전송 보내게 하는 부분
-        if ((rand() % 100) < 20)
+        // printf("buf:%s", receive_pkt.msg);
+        fp = fopen("result.txt", "w");
+        if (fp == NULL)
         {
-            printf("== TEST: ignore SENDER'S ACK.. waiting for resending... == \n");
-            continue;
+            printf("Failed to open file\n");
+            return 0;
         }
-        // 여기까지
 
-        if ((str_len > 0) && (receive_pkt.seq == sequence))
+        if (0 < (str_len = recvfrom(serv_sock, &receive_pkt, sizeof(receive_pkt), 0,
+                                    (struct sockaddr *)&clnt_adr, &clnt_adr_sz)))
         {
-            send_pkt.seq = sequence;
+            fwrite(receive_pkt.msg, 1, str_len, fp);
+        }
+        else
+        {
+            break;
+        }
+        end_time = time(NULL);
+
+        printf("%s\n", receive_pkt.msg);
+        memset(receive_pkt.msg, 0, sizeof(receive_pkt.msg));
+        // fprintf(fp, "%s", receive_pkt.msg);
+
+        printf("[Receive PCK from Sender] type: %s, sequence: %d\n", (receive_pkt.type ? "ACK" : "PCK"), receive_pkt.seq);
+
+        if (str_len > 0)
+        {
+            send_pkt.seq = receive_pkt.seq;
             send_pkt.type = 1;
-            strcpy(send_pkt.msg, receive_pkt.msg);
 
             sendto(serv_sock, &send_pkt, sizeof(send_pkt), 0,
                    (struct sockaddr *)&clnt_adr, clnt_adr_sz);
-            printf("[Send ACK to Sender] type: %s, sequence: %d, message: %s\n\n\n", (send_pkt.type ? "ACK" : "PCK"), send_pkt.seq, send_pkt.msg);
+            printf("[Send ACK to Sender] type: %s, sequence: %d\n", (send_pkt.type ? "ACK" : "PCK"), send_pkt.seq);
         }
 
+        size += sizeof(receive_pkt.type);
+        size += sizeof(receive_pkt.seq);
+        size += strlen(receive_pkt.msg);
+        // size += strlen(receive_pkt.f_name);
+        spend_time = difftime(end_time, receive_pkt.s_time);
+        printf("[Result] size: %d, time: %.2f\t %.2f dps\n\n\n", size, spend_time, (size / spend_time));
+        size = 0;
         // printf("%d\n", sequence);
-        sequence++;
+        // sequence++;
+        // memset(buf, 0, sizeof(buf));
+
         // printf("%d\n", sequence);
     }
     close(serv_sock);
