@@ -15,10 +15,10 @@ struct Pkt
 {
     int seq;
     int type; // 0이면 ptk, 1이면 ack
-    char msg[BUF_SIZE];
     time_t s_time;
     char f_name[NAME_SIZE];
     int size;
+    char msg[BUF_SIZE];
 };
 
 int main(int argc, char *argv[])
@@ -67,25 +67,28 @@ int main(int argc, char *argv[])
             fp = fopen(file_name, "rb");
             if (fp != NULL)
             {
-
+                memset(message, 0, sizeof(message));
+                memset(send_pkt.msg, 0, sizeof(send_pkt.msg));
+                memset(send_pkt.f_name, 0, sizeof(file_name));
                 while (res = fread(message, sizeof(char), BUF_SIZE, fp))
                 {
                     strcpy(send_pkt.msg, message);
-
-                    printf("%s\n", send_pkt.msg);
 
                     send_pkt.seq = sequence++;
                     send_pkt.type = 0;
 
                     strcpy(send_pkt.f_name, file_name);
-                    printf("file_name: %s\n", send_pkt.f_name);
 
                     start_time = time(NULL);
                     send_pkt.s_time = start_time;
                     sendto(sock, &send_pkt, sizeof(send_pkt), 0,
                            (struct sockaddr *)&serv_adr, sizeof(serv_adr));
-                    printf("[Send PCK to Receiver] type: %s, sequence: %d\n", (send_pkt.type ? "ACK" : "PCK"), send_pkt.seq);
+                    printf("file_name: %s\n", send_pkt.f_name);
+                    printf("%s\n", send_pkt.msg);
 
+                    printf("[Send PCK to Receiver] type: %s, sequence: %d\n\n\n", (send_pkt.type ? "ACK" : "PCK"), send_pkt.seq);
+
+                    memset(message, 0, sizeof(message));
                     memset(send_pkt.msg, 0, sizeof(send_pkt.msg));
                     memset(send_pkt.f_name, 0, sizeof(file_name));
 

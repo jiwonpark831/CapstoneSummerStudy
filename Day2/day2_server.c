@@ -14,10 +14,10 @@ struct Pkt
 {
     int seq;
     int type; // 0이면 ptk, 1이면 ack
-    char msg[BUF_SIZE];
     time_t s_time;
     char f_name[NAME_SIZE];
     int size;
+    char msg[BUF_SIZE];
 };
 
 int main(int argc, char *argv[])
@@ -32,7 +32,6 @@ int main(int argc, char *argv[])
     int size = 0;
     FILE *fp;
     int res;
-    char buf[BUF_SIZE];
 
     struct sockaddr_in serv_adr, clnt_adr;
     if (argc != 2)
@@ -67,16 +66,14 @@ int main(int argc, char *argv[])
                 printf("Failed to open %s\n", receive_pkt.f_name);
                 return 0;
             }
+            printf("%s\n", receive_pkt.msg);
 
             fwrite(receive_pkt.msg, sizeof(char), strlen(receive_pkt.msg), fp);
-            fclose(fp);
-            printf("%s\n", buf);
+            memset(receive_pkt.msg, 0, sizeof(receive_pkt.msg));
         }
+        fclose(fp);
 
         end_time = time(NULL);
-
-        memset(buf, 0, sizeof(buf));
-        memset(receive_pkt.msg, 0, sizeof(receive_pkt.msg));
 
         printf("[Receive PCK from Sender] type: %s, sequence: %d\n", (receive_pkt.type ? "ACK" : "PCK"), receive_pkt.seq);
 
