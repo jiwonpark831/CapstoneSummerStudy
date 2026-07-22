@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
                     printf("file_name: %s\n", send_pkt.f_name);
                     printf("%s\n", send_pkt.msg);
 
-                    printf("[Send PCK to Receiver] type: %s, sequence: %d\n\n\n", (send_pkt.type ? "ACK" : "PCK"), send_pkt.seq);
+                    printf("[Send PCK to Receiver] type: %s, sequence: %d\n", (send_pkt.type ? "ACK" : "PCK"), send_pkt.seq);
 
                     memset(message, 0, sizeof(message));
                     memset(send_pkt.msg, 0, sizeof(send_pkt.msg));
