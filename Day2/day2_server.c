@@ -17,6 +17,7 @@ struct Pkt
     char msg[BUF_SIZE];
     time_t s_time;
     char f_name[NAME_SIZE];
+    int size;
 };
 
 int main(int argc, char *argv[])
@@ -26,13 +27,12 @@ int main(int argc, char *argv[])
     socklen_t clnt_adr_sz;
     struct Pkt receive_pkt;
     struct Pkt send_pkt;
-    int sequence = 0;
     time_t end_time;
     double spend_time;
     int size = 0;
     FILE *fp;
     int res;
-    char buf[2048];
+    char buf[BUF_SIZE];
 
     struct sockaddr_in serv_adr, clnt_adr;
     if (argc != 2)
@@ -57,31 +57,26 @@ int main(int argc, char *argv[])
     {
         clnt_adr_sz = sizeof(clnt_adr);
 
-        // str_len = recvfrom(serv_sock, &receive_pkt, sizeof(receive_pkt), 0,
-        //                    (struct sockaddr *)&clnt_adr, &clnt_adr_sz);
-
-        // printf("buf:%s", receive_pkt.msg);
-        fp = fopen("result.txt", "w");
-        if (fp == NULL)
-        {
-            printf("Failed to open file\n");
-            return 0;
-        }
-
         if (0 < (str_len = recvfrom(serv_sock, &receive_pkt, sizeof(receive_pkt), 0,
                                     (struct sockaddr *)&clnt_adr, &clnt_adr_sz)))
         {
-            fwrite(receive_pkt.msg, 1, str_len, fp);
+            printf("File name: %s\n", receive_pkt.f_name);
+            fp = fopen(receive_pkt.f_name, "ab");
+            if (fp == NULL)
+            {
+                printf("Failed to open %s\n", receive_pkt.f_name);
+                return 0;
+            }
+
+            fwrite(receive_pkt.msg, sizeof(char), strlen(receive_pkt.msg), fp);
+            fclose(fp);
+            printf("%s\n", buf);
         }
-        else
-        {
-            break;
-        }
+
         end_time = time(NULL);
 
-        printf("%s\n", receive_pkt.msg);
+        memset(buf, 0, sizeof(buf));
         memset(receive_pkt.msg, 0, sizeof(receive_pkt.msg));
-        // fprintf(fp, "%s", receive_pkt.msg);
 
         printf("[Receive PCK from Sender] type: %s, sequence: %d\n", (receive_pkt.type ? "ACK" : "PCK"), receive_pkt.seq);
 
@@ -98,15 +93,10 @@ int main(int argc, char *argv[])
         size += sizeof(receive_pkt.type);
         size += sizeof(receive_pkt.seq);
         size += strlen(receive_pkt.msg);
-        // size += strlen(receive_pkt.f_name);
+        size += strlen(receive_pkt.f_name);
         spend_time = difftime(end_time, receive_pkt.s_time);
         printf("[Result] size: %d, time: %.2f\t %.2f dps\n\n\n", size, spend_time, (size / spend_time));
         size = 0;
-        // printf("%d\n", sequence);
-        // sequence++;
-        // memset(buf, 0, sizeof(buf));
-
-        // printf("%d\n", sequence);
     }
     close(serv_sock);
     return 0;
