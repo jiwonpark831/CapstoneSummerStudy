@@ -5,8 +5,9 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <time.h>
+#include <sys/stat.h>
 
-#define BUF_SIZE 256
+#define BUF_SIZE 1024
 #define NAME_SIZE 30
 
 void error_handling(char *message);
@@ -36,6 +37,7 @@ int main(int argc, char *argv[])
     FILE *fp;
     int res;
     char file_name[NAME_SIZE];
+    struct stat file_stat;
 
     struct sockaddr_in serv_adr, from_adr;
     if (argc != 3)
@@ -70,9 +72,16 @@ int main(int argc, char *argv[])
                 memset(message, 0, sizeof(message));
                 memset(send_pkt.msg, 0, sizeof(send_pkt.msg));
                 memset(send_pkt.f_name, 0, sizeof(file_name));
-                while (res = fread(message, sizeof(char), BUF_SIZE, fp))
+
+                if (stat(file_name, &file_stat) == 0)
                 {
-                    strcpy(send_pkt.msg, message);
+                    printf("send message size: %d\n", (int)file_stat.st_size);
+                }
+
+                while (res = fread(message, 1, BUF_SIZE, fp))
+                {
+                    memcpy(send_pkt.msg, message, sizeof(message));
+                    // printf("message: %s\n", message);
 
                     send_pkt.seq = sequence++;
                     send_pkt.type = 0;
@@ -81,10 +90,22 @@ int main(int argc, char *argv[])
 
                     start_time = time(NULL);
                     send_pkt.s_time = start_time;
+                    if (((int)file_stat.st_size / BUF_SIZE) > 0)
+                    {
+                        send_pkt.size = sizeof(send_pkt.msg);
+                        file_stat.st_size -= BUF_SIZE;
+                    }
+                    else
+                    {
+                        int last = (int)file_stat.st_size % BUF_SIZE;
+                        send_pkt.size = last;
+                    }
+
                     sendto(sock, &send_pkt, sizeof(send_pkt), 0,
                            (struct sockaddr *)&serv_adr, sizeof(serv_adr));
                     printf("file_name: %s\n", send_pkt.f_name);
                     printf("%s\n", send_pkt.msg);
+                    printf("send message size: %d\n", send_pkt.size);
 
                     printf("[Send PCK to Receiver] type: %s, sequence: %d\n", (send_pkt.type ? "ACK" : "PCK"), send_pkt.seq);
 

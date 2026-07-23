@@ -6,7 +6,7 @@
 #include <sys/socket.h>
 #include <time.h>
 
-#define BUF_SIZE 256
+#define BUF_SIZE 1024
 #define NAME_SIZE 30
 void error_handling(char *message);
 
@@ -66,9 +66,11 @@ int main(int argc, char *argv[])
                 printf("Failed to open %s\n", receive_pkt.f_name);
                 return 0;
             }
+            fwrite(receive_pkt.msg, 1, receive_pkt.size, fp);
             printf("%s\n", receive_pkt.msg);
 
-            fwrite(receive_pkt.msg, sizeof(char), strlen(receive_pkt.msg), fp);
+            printf("%d\n", receive_pkt.size);
+
             memset(receive_pkt.msg, 0, sizeof(receive_pkt.msg));
         }
         fclose(fp);
@@ -89,7 +91,7 @@ int main(int argc, char *argv[])
 
         size += sizeof(receive_pkt.type);
         size += sizeof(receive_pkt.seq);
-        size += strlen(receive_pkt.msg);
+        size += receive_pkt.size;
         size += strlen(receive_pkt.f_name);
         spend_time = difftime(end_time, receive_pkt.s_time);
         printf("[Result] size: %d, time: %.2f\t %.2f dps\n\n\n", size, spend_time, (size / spend_time));
