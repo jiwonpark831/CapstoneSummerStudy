@@ -13,12 +13,12 @@ void error_handling(char *message);
 int main(int argc, char *argv[])
 {
     int sock;
-    char buf[BUF_SIZE];
     int str_len, recv_len, recv_cnt, cnt, read_len;
     struct sockaddr_in serv_adr;
     FILE *fp;
     int mode;
     int size;
+    char buf[BUF_SIZE];
     char filename[64];
     struct stat file_stat;
 
@@ -100,13 +100,20 @@ int main(int argc, char *argv[])
                     error_handling("read() error!");
                     break;
                 }
-                printf("=======%s", buf);
-                fwrite((void *)buf, 1, sizeof(buf), fp);
+                buf[read_len] = '\0';
+                // printf("=======%s", buf);
+                fwrite((void *)buf, 1, read_len, fp);
                 str_len += read_len;
+                if (str_len >= size)
+                {
+                    break;
+                }
             }
 
             memset(buf, 0, sizeof(buf));
             memset(filename, 0, sizeof(filename));
+            printf("download done!\n\n");
+
             fclose(fp);
 
             break;
@@ -118,7 +125,7 @@ int main(int argc, char *argv[])
             scanf("%s", filename);
 
             fp = fopen(filename, "rb");
-            printf("%s", filename);
+            printf("%s\n", filename);
 
             if (fp == NULL)
                 printf("Cannot find file %s\n", filename);
@@ -131,22 +138,33 @@ int main(int argc, char *argv[])
                 size = (int)file_stat.st_size;
                 write(sock, &size, sizeof(size));
             }
+            memset(filename, 0, sizeof(filename));
+            memset(buf, 0, sizeof(buf));
 
             while (1)
             {
-                cnt = fread((void *)buf, 1, BUF_SIZE, fp);
+                cnt = fread((void *)buf, 1, sizeof(buf), fp);
                 if (cnt < BUF_SIZE)
                 {
-                    printf("=====%s", buf);
+                    buf[cnt] = '\0';
                     write(sock, buf, cnt);
+                    // printf("=====%s", buf);
                     break;
                 }
-                printf("=====%s", buf);
+                buf[cnt] = '\0';
                 write(sock, buf, sizeof(buf));
+                // printf("=====%s", buf);
+
+                str_len += cnt;
+                if (str_len >= size)
+                {
+                    break;
+                }
             }
             memset(filename, 0, sizeof(filename));
             memset(buf, 0, sizeof(buf));
             fclose(fp);
+            printf("write to server\n\n");
 
             break;
 

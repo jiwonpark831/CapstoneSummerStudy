@@ -18,7 +18,6 @@ int main(int argc, char *argv[])
     struct sockaddr_in serv_adr, clnt_adr;
     socklen_t adr_sz;
     int str_len, i, cnt, read_len;
-    char buf[BUF_SIZE];
     FILE *fp;
     DIR *dir;
     struct dirent *entry;
@@ -29,6 +28,7 @@ int main(int argc, char *argv[])
     int size;
     char filename[64];
     char size_c[4];
+    char buf[BUF_SIZE];
 
     struct epoll_event *ep_events;
     struct epoll_event event;
@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
 
                 str_len = read(ep_events[i].data.fd, &mode, sizeof(mode));
 
-                printf("mode: %d\n", mode);
+                // printf("mode: %d\n", mode);
                 if (str_len == 0)
                 { // close request!
                     epoll_ctl(epfd, EPOLL_CTL_DEL, ep_events[i].data.fd, NULL);
@@ -184,33 +184,52 @@ int main(int argc, char *argv[])
                             printf("size: %d\n", size);
                             write(ep_events[i].data.fd, &size, sizeof(size));
                         }
+                        memset(filename, 0, sizeof(filename));
+                        memset(buf, 0, sizeof(buf));
+
+                        str_len = 0;
 
                         while (1)
                         {
                             cnt = fread((void *)buf, 1, sizeof(buf), fp);
                             if (cnt < BUF_SIZE)
                             {
-                                printf("=======%s", buf);
+                                buf[cnt] = '\0';
                                 write(ep_events[i].data.fd, buf, cnt);
+                                // printf("=======last%s", buf);
+
                                 break;
                             }
-                            printf("=======%s", buf);
+                            buf[cnt] = '\0';
                             write(ep_events[i].data.fd, buf, sizeof(buf));
+                            // printf("=======%s", buf);
+
+                            str_len += cnt;
+                            if (str_len >= size)
+                            {
+                                break;
+                            }
                         }
 
                         memset(buf, 0, sizeof(buf));
                         memset(filename, 0, sizeof(filename));
                         fclose(fp);
+                        printf("write to client\n\n");
+
                         break;
 
                     case 5: // upload
                         memset(filename, 0, sizeof(filename));
                         memset(buf, 0, sizeof(buf));
+
                         read(ep_events[i].data.fd, filename, sizeof(filename));
+                        read(ep_events[i].data.fd, &size, sizeof(size));
+                        printf("size: %d\n", size);
 
                         fp = fopen(filename, "wb");
 
-                        read(ep_events[i].data.fd, &size, sizeof(size));
+                        memset(filename, 0, sizeof(filename));
+                        memset(buf, 0, sizeof(buf));
 
                         str_len = 0;
 
@@ -221,15 +240,17 @@ int main(int argc, char *argv[])
                                 error_handling("read() error!");
                                 break;
                             }
-                            printf("=======%s", buf);
-
-                            fwrite((void *)buf, 1, sizeof(buf), fp);
+                            buf[read_len] = '\0';
+                            // printf("=======%s", buf);
+                            fwrite((void *)buf, 1, read_len, fp);
                             str_len += read_len;
                         }
 
                         memset(filename, 0, sizeof(filename));
                         memset(buf, 0, sizeof(buf));
                         fclose(fp);
+                        printf("upload file\n\n");
+
                         break;
 
                     default:
