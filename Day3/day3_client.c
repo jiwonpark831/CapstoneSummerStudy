@@ -79,6 +79,7 @@ int main(int argc, char *argv[])
             memset(buf, 0, sizeof(buf));
             break;
         case 4: // download
+            memset(filename, 0, sizeof(filename));
             memset(buf, 0, sizeof(buf));
             printf("Download file name > ");
             scanf("%s", filename);
@@ -86,6 +87,7 @@ int main(int argc, char *argv[])
             write(sock, filename, sizeof(filename));
 
             read(sock, &size, sizeof(size));
+            printf("size: %d\n", size);
 
             fp = fopen(filename, "wb");
 
@@ -98,6 +100,7 @@ int main(int argc, char *argv[])
                     error_handling("read() error!");
                     break;
                 }
+                printf("=======%s", buf);
                 fwrite((void *)buf, 1, sizeof(buf), fp);
                 str_len += read_len;
             }
@@ -108,6 +111,9 @@ int main(int argc, char *argv[])
 
             break;
         case 5: // upload
+            memset(filename, 0, sizeof(filename));
+            memset(buf, 0, sizeof(buf));
+
             printf("Upload file name > ");
             scanf("%s", filename);
 
@@ -131,10 +137,11 @@ int main(int argc, char *argv[])
                 cnt = fread((void *)buf, 1, BUF_SIZE, fp);
                 if (cnt < BUF_SIZE)
                 {
-                    printf("%s", buf);
+                    printf("=====%s", buf);
                     write(sock, buf, cnt);
                     break;
                 }
+                printf("=====%s", buf);
                 write(sock, buf, sizeof(buf));
             }
             memset(filename, 0, sizeof(filename));

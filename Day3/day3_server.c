@@ -25,15 +25,14 @@ int main(int argc, char *argv[])
     struct stat file_stat;
     char pwd[BUF_SIZE];
     char file_path[BUF_SIZE];
-
     int mode;
     int size;
+    char filename[64];
+    char size_c[4];
 
     struct epoll_event *ep_events;
     struct epoll_event event;
     int epfd, event_cnt;
-
-    char filename[64];
 
     if (argc != 2)
     {
@@ -85,11 +84,10 @@ int main(int argc, char *argv[])
             else
             {
                 // client
-
-                // memset(recv_pkt->f_name, 0, sizeof(recv_pkt->f_name));
-                // memset(recv_pkt->msg, 0, sizeof(recv_pkt->msg));
-
                 memset(buf, 0, sizeof(buf));
+                memset(filename, 0, sizeof(filename));
+
+                printf("Loading.....\n\n");
 
                 str_len = read(ep_events[i].data.fd, &mode, sizeof(mode));
 
@@ -108,7 +106,7 @@ int main(int argc, char *argv[])
                     {
                     case 1: // pwd
                         getcwd(pwd, sizeof(buf));
-                        printf("pwd: %s\n", buf);
+                        printf("pwd: %s\n", pwd);
                         write(ep_events[i].data.fd, &pwd, sizeof(pwd));
                         memset(pwd, 0, sizeof(pwd));
                         break;
@@ -129,6 +127,13 @@ int main(int argc, char *argv[])
                         while ((entry = readdir(dir)) != NULL)
                         {
                             strcat(buf, entry->d_name);
+                            if (stat(entry->d_name, &file_stat) == 0)
+                            {
+                                size = (int)file_stat.st_size;
+                            }
+                            snprintf(size_c, sizeof(size_c), "%d", size);
+                            strcat(buf, "\t");
+                            strcat(buf, size_c);
                             strcat(buf, "\n");
                         }
                         printf("current dir list: %s\n", buf);
@@ -152,16 +157,23 @@ int main(int argc, char *argv[])
                         while ((entry = readdir(dir)) != NULL)
                         {
                             strcat(buf, entry->d_name);
+                            if (stat(entry->d_name, &file_stat) == 0)
+                            {
+                                size = (int)file_stat.st_size;
+                            }
+                            snprintf(size_c, sizeof(size_c), "%d", size);
+                            strcat(buf, "\t");
+                            strcat(buf, size_c);
                             strcat(buf, "\n");
                         }
                         printf("current dir list: %s\n", buf);
-                        closedir(dir);
                         write(ep_events[i].data.fd, buf, sizeof(buf));
 
                         memset(buf, 0, sizeof(buf));
-                        fclose(fp);
+                        closedir(dir);
                         break;
                     case 4: // download
+                        memset(filename, 0, sizeof(filename));
                         memset(buf, 0, sizeof(buf));
 
                         read(ep_events[i].data.fd, filename, sizeof(filename));
@@ -169,17 +181,20 @@ int main(int argc, char *argv[])
                         if (stat(filename, &file_stat) == 0)
                         {
                             size = (int)file_stat.st_size;
+                            printf("size: %d\n", size);
                             write(ep_events[i].data.fd, &size, sizeof(size));
                         }
 
                         while (1)
                         {
-                            cnt = fread((void *)buf, 1, BUF_SIZE, fp);
+                            cnt = fread((void *)buf, 1, sizeof(buf), fp);
                             if (cnt < BUF_SIZE)
                             {
+                                printf("=======%s", buf);
                                 write(ep_events[i].data.fd, buf, cnt);
                                 break;
                             }
+                            printf("=======%s", buf);
                             write(ep_events[i].data.fd, buf, sizeof(buf));
                         }
 
@@ -189,6 +204,8 @@ int main(int argc, char *argv[])
                         break;
 
                     case 5: // upload
+                        memset(filename, 0, sizeof(filename));
+                        memset(buf, 0, sizeof(buf));
                         read(ep_events[i].data.fd, filename, sizeof(filename));
 
                         fp = fopen(filename, "wb");
@@ -204,6 +221,8 @@ int main(int argc, char *argv[])
                                 error_handling("read() error!");
                                 break;
                             }
+                            printf("=======%s", buf);
+
                             fwrite((void *)buf, 1, sizeof(buf), fp);
                             str_len += read_len;
                         }
