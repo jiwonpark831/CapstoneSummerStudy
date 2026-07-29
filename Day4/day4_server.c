@@ -13,7 +13,7 @@
 struct Data
 {
     char word[BUF_SIZE];
-    int search_count;
+    char search_count[BUF_SIZE];
 };
 
 void *handle_clnt(void *arg);
@@ -109,10 +109,15 @@ void send_msg(char *msg, int len) // send to all
     char *result;              // strstr result 담는 애
     char final_send[BUF_SIZE]; // 최종 보낼애
     int i;
+    int idx = 0;
+    struct Data data[10];
+    char tmp_cnt[32];
+    char tmp_str[64];
 
     memset(final_send, 0, sizeof(final_send));
     memset(line, 0, sizeof(line));
     memset(search_data, 0, sizeof(search_data));
+    memset(data, 0, sizeof(data));
 
     fp = fopen(filename, "rb");
 
@@ -132,8 +137,31 @@ void send_msg(char *msg, int len) // send to all
             result = strstr(search_data, msg);
             if (result != NULL)
             {
-                strcat(final_send, search_data);
-                strcat(final_send, "\n");
+                strcpy(data[idx].word, search_data);
+                search_word = strtok(NULL, "\n");
+                // printf("count : %s\n", search_word);
+                strcpy(data[idx].search_count, search_word);
+
+                // printf("count d : %s\n", data[idx].search_count);
+
+                for (int j = 0; j < (sizeof(data) / sizeof(data[1])) - 1; j++)
+                {
+                    for (int z = 0; z < (sizeof(data) / sizeof(data[1])) - 1; z++)
+                    {
+                        if (atoi(data[z].search_count) < atoi(data[z + 1].search_count))
+                        {
+                            strcpy(tmp_cnt, data[z].search_count);
+                            strcpy(data[z].search_count, data[z + 1].search_count);
+                            strcpy(data[z + 1].search_count, tmp_cnt);
+                            strcpy(tmp_str, data[z].word);
+                            strcpy(data[z].word, data[z + 1].word);
+                            strcpy(data[z + 1].word, tmp_str);
+                        }
+                    }
+                }
+                memset(tmp_cnt, 0, sizeof(tmp_cnt));
+                memset(tmp_str, 0, sizeof(tmp_str));
+                idx++;
             }
             else
             {
@@ -143,6 +171,14 @@ void send_msg(char *msg, int len) // send to all
         }
 
         fclose(fp);
+    }
+    memset(final_send, 0, sizeof(final_send));
+
+    for (int k = 0; k < sizeof(data) / sizeof(data[1]); k++)
+    {
+        strcat(final_send, data[k].word);
+        // printf("%s", data[k].word);
+        strcat(final_send, "\n");
     }
 
     pthread_mutex_lock(&mutx);
