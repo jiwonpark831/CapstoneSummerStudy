@@ -111,7 +111,28 @@ void *recv_msg(void *arg) // read thread main
         printf("\x1b[3J\x1b[2J\x1b[H");
         printf("\033[38;2;188;143;143mSearch Word:\033[0m %s\n", search_word);
         printf("===================================\n");
-        printf("%s\r", result);
+
+        for (int i = 0; i < strlen(result); i++)
+        {
+            if (result[i] == search_word[0])
+            {
+                int count = 0;
+
+                for (int j = 0; j < strlen(search_word); j++)
+                {
+                    if (result[i + j] == search_word[j])
+                    {
+                        printf("\033[38;2;143;188;143m%c\033[0m", result[i + j]);
+                        count++;
+                    }
+                }
+                i += count - 1;
+            }
+            else
+            {
+                printf("%c", result[i]);
+            }
+        }
     }
     return NULL;
 }
