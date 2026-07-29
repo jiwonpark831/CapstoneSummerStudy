@@ -14,6 +14,8 @@ void *send_msg(void *arg);
 void *recv_msg(void *arg);
 void error_handling(char *msg);
 
+char search_word[BUF_SIZE];
+
 int main(int argc, char *argv[])
 {
     int sock;
@@ -76,7 +78,7 @@ void *send_msg(void *arg) // send thread main
     {
         memset(ch_str, 0, sizeof(ch_str));
         ch = getchar();
-        if (ch == '\b')
+        if (ch == 127)
         {
             search[(strlen(search)) - 1] = '\0';
         }
@@ -87,7 +89,7 @@ void *send_msg(void *arg) // send thread main
             strcat(search, ch_str);
         }
         write(sock, search, sizeof(search));
-        printf("Search Word: %s\r", search);
+        strcpy(search_word, search);
     }
     return NULL;
 }
@@ -95,6 +97,7 @@ void *send_msg(void *arg) // send thread main
 void *recv_msg(void *arg) // read thread main
 {
     int sock = *((int *)arg);
+    char search[BUF_SIZE];
     char result[1024];
     int str_len;
     while (1)
@@ -105,6 +108,8 @@ void *recv_msg(void *arg) // read thread main
         if (str_len == -1)
             return (void *)-1;
         result[str_len] = 0;
+        printf("\x1b[3J\x1b[2J\x1b[H");
+        printf("Search Word: %s\n", search_word);
         printf("===================================\n");
         printf("%s\r", result);
     }

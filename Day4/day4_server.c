@@ -80,8 +80,9 @@ void *handle_clnt(void *arg)
 
     while ((str_len = read(clnt_sock, msg, sizeof(msg))) != 0)
     {
-        printf("%s\n", msg);
+        printf("Receive: %s %d\n", msg, strlen(msg));
         send_msg(msg, str_len);
+        memset(msg, 0, sizeof(msg));
     }
 
     pthread_mutex_lock(&mutx);
@@ -115,31 +116,45 @@ void send_msg(char *msg, int len) // send to all
 
     fp = fopen(filename, "rb");
 
-    while (fgets(line, sizeof(line), fp) != NULL)
+    if (strlen(msg) == 0)
     {
-        char *search_word = strtok(line, ",");
-        // printf("search in txt file: %s\n", search_word);
-        strcpy(search_data, search_word);
-
-        result = strstr(search_data, msg);
-        if (result != NULL)
-        {
-            strcat(final_send, search_data);
-            strcat(final_send, "\n");
-        }
-        else
-        {
-            // printf("cannot find %s in txt file\n", search_data);
-        }
-        memset(search_data, 0, sizeof(search_data));
+        strcpy(final_send, " ");
     }
+    else
+    {
 
-    fclose(fp);
+        while (fgets(line, sizeof(line), fp) != NULL)
+        {
+            char *search_word = strtok(line, ",");
+            // printf("search in txt file: %s\n", search_word);
+            strcpy(search_data, search_word);
+
+            result = strstr(search_data, msg);
+            if (result != NULL)
+            {
+                strcat(final_send, search_data);
+                strcat(final_send, "\n");
+            }
+            else
+            {
+                // printf("cannot find %s in txt file\n", search_data);
+            }
+            memset(search_data, 0, sizeof(search_data));
+        }
+
+        fclose(fp);
+    }
 
     pthread_mutex_lock(&mutx);
     for (i = 0; i < clnt_cnt; i++)
+    {
+        // write(clnt_socks[i], msg, sizeof(msg));
+        // printf("Send: %s\n", msg);
         write(clnt_socks[i], final_send, sizeof(final_send));
-    printf("write!\n");
+        printf("Send: %s\n", final_send);
+        memset(final_send, 0, sizeof(final_send));
+    }
+    printf("write!\n\n\n");
     pthread_mutex_unlock(&mutx);
 }
 void error_handling(char *msg)
