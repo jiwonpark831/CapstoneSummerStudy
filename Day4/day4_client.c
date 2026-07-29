@@ -109,7 +109,7 @@ void *recv_msg(void *arg) // read thread main
             return (void *)-1;
         result[str_len] = 0;
         printf("\x1b[3J\x1b[2J\x1b[H");
-        printf("Search Word: %s\n", search_word);
+        printf("\033[38;2;188;143;143mSearch Word:\033[0m %s\n", search_word);
         printf("===================================\n");
         printf("%s\r", result);
     }
