@@ -1,18 +1,5 @@
 #include "p2p.h"
 
-struct Pkt
-{
-    char data[1000];
-    int size; // data의 size
-    int time;
-};
-
-struct Receiver_info
-{
-    int ip[10];
-    int port[10];
-};
-
 int max_receiver;        // -n: 최대 receiving peer수
 char file_name[20] = ""; // -f: 보낼 파일 이름
 int seg_size;            // -g: segment 크기, 단위는 KB

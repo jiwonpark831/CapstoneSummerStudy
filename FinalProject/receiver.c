@@ -1,9 +1,10 @@
 #include "p2p.h"
 
-struct Peer_send_info
+struct Peer_send
 {
     int sd;
     int my_idx;
+    char **final_buffer;
 };
 
 void receiver(char *argv[])
@@ -31,7 +32,8 @@ void receiver(char *argv[])
     int cur_cnt = 0;
     int receive_cnt;
     char tmp_buf[1000];
-    struct Peer_send_info peer_send_info;
+    struct Peer_send peer_info;
+    char final_buffer[seg_count][seg_size];
 
     // p2p connect를 위한 listen
     receive_p2p_accept_sd = socket(PF_INET, SOCK_STREAM, 0);
@@ -65,7 +67,7 @@ void receiver(char *argv[])
     write(receive_sd, argv[2], sizeof(argv[2])); // htons(atoi(argv[2]))
 
     // 내 idx, 다른 receiver 정보, seg info 등 받아오기
-    read(receive_sd, &my_idx, sizeof(my_idx));
+    read(receive_sd, &my_index, sizeof(my_index));
 
     // 몇명인지 읽고.. rea_cnt +=
     read(receive_sd, &other_receiver_info, sizeof(other_receiver_info));
@@ -77,10 +79,10 @@ void receiver(char *argv[])
         receive_p2p_request_accpet_sd_adr_sz = sizeof(receive_p2p_request_accpet_sd_adr);
         receive_p2p_request_accpet_sd = accept(receive_p2p_accept_sd, (struct sockaddr *)&receive_p2p_request_accpet_sd_adr, &receive_p2p_request_accpet_sd_adr_sz);
 
-        peer_send_info.sd = receive_p2p_request_accpet_sd;
-        peer_send_info.my_idx = i;
-        pthread_create(&send_thread[i], NULL, peer_send, (void *)&peer_send_info);
-        pthread_create(&receive_thread[i], NULL, peer_receive, (void *)&receive_p2p_request_accpet_sd);
+        peer_info.sd = receive_p2p_request_accpet_sd;
+        peer_info.my_idx = i;
+        pthread_create(&send_thread[i], NULL, peer_send, (void *)&peer_info);
+        pthread_create(&receive_thread[i], NULL, peer_receive, (void *)&peer_info);
     }
 
     // my_index보다 큰 애한테 connect
@@ -92,21 +94,25 @@ void receiver(char *argv[])
 
         memset(&receive_p2p_sender_adr, 0, sizeof(receive_p2p_sender_adr));
         receive_p2p_sender_adr.sin_family = AF_INET;
-        receive_p2p_sender_adr.sin_addr.s_addr = inet_addr(other_receiver_info[j].ip);
-        receive_p2p_sender_adr.sin_port = htons(atoi(other_receiver_info[j].port));
+        receive_p2p_sender_adr.sin_addr.s_addr = inet_addr((char *)other_receiver_info.ip[j]);
+        receive_p2p_sender_adr.sin_port = htons(atoi((char *)other_receiver_info.port[j]));
 
         if (connect(receive_p2p_connect_sd, (struct sockaddr *)&receive_p2p_sender_adr, sizeof(receive_p2p_sender_adr)) == -1)
             error_handling("connect() error");
         else
             puts("Connected..................");
 
-        peer_send_info.sd = receive_p2p_connect_sd;
-        peer_send_info.my_idx = j;
-        pthread_create(&send_thread[j], NULL, peer_send, (void *)&peer_send_info);
-        pthread_create(&receive_thread[j], NULL, peer_receive, (void *)&receive_p2p_connect_sd);
+        peer_info.sd = receive_p2p_connect_sd;
+        peer_info.my_idx = j;
+        for (int a = 0; a < seg_count; a++)
+            peer_info.final_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
+        peer_info.final_buffer = (char **)final_buffer;
+
+        pthread_create(&send_thread[j], NULL, peer_send, (void *)&peer_info);
+        pthread_create(&receive_thread[j], NULL, peer_receive, (void *)&peer_info);
     }
 
-    // write로 우리 다 연결됐어! 가 필요
+    // write로 우리 다 연결됐어 알림
     connect_flag = 1;
     write(receive_sd, &connect_flag, sizeof(connect_flag));
 
@@ -120,6 +126,8 @@ void receiver(char *argv[])
                 break;
             receive_cnt = read(receive_sd, tmp_buf, sizeof(tmp_buf));
             strcat(receive_buffer[k], tmp_buf);
+            if (k % seg_count == my_index)
+                strcat(final_buffer[k], receive_buffer[k]);
             cur_cnt += receive_cnt;
         }
     }
@@ -136,28 +144,85 @@ void receiver(char *argv[])
 
 void *peer_send(void *arg)
 {
-    int sd = *((struct *)arg).sd;
-    int my_idx = *((struct *)arg).my_idx;
+    int sd = ((struct Peer_send *)arg)->sd;
+    int my_idx = ((struct Peer_send *)arg)->my_idx;
+    char final_buffer[seg_count][seg_size];
+    memcpy(final_buffer, ((struct Peer_send *)arg)->final_buffer, sizeof(((struct Peer_send *)arg)->final_buffer));
+    int my_seg_cnt = 0; // 내가 보낼 seg 개수
+    struct Pkt send_pkt;
+
     while (write_flag != 1)
     {
         usleep(10000);
     }
 
     for (int i = 0; i < seg_count; i++)
-    {
-
         if (i % seg_count == my_idx)
+            my_seg_cnt++;
+
+    write(sd, &my_seg_cnt, sizeof(my_seg_cnt));
+
+    for (int i = 0; i < seg_count; i++)
+    {
+        if (i % seg_count == my_idx)
+        {
             // seg index.. size 등등 다, seg 몇개인지
-            write(arg, &i, sizeof(i));
+            write(sd, &i, sizeof(i));
+            write(sd, &seg_size, sizeof(seg_size));
+            if (i = seg_count)
+            {
+                int last_seg_size = file_size - ((seg_count - 1) * seg_size);
+                write(sd, &last_seg_size, sizeof(seg_size));
+            }
+            else
+                write(sd, &seg_size, sizeof(seg_size));
+
+            while (1)
+            {
+                // write data 1000씩 보내기
+                memcpy(send_pkt.data, final_buffer[i], sizeof(final_buffer[i]));
+                send_pkt.size = strlen(send_pkt.data);
+                write(sd, &send_pkt, sizeof(send_pkt));
+                // time 측정을 위한 로직 필요!!!
+
+                // 진행도 출력
+                print_sender_result();
+            }
+        }
     }
 }
 
 void *peer_receive(void *arg)
 {
+    int sd = ((struct Peer_send *)arg)->sd;
+    char final_buffer[seg_count][seg_size];
+    memcpy(final_buffer, ((struct Peer_send *)arg)->final_buffer, sizeof(((struct Peer_send *)arg)->final_buffer));
+    struct Pkt receive_pkt;
+    int my_seg_cnt = 0; // 내가 보낼 seg 개수
+    char tmp_buf[1000];
+    int seg_size;
+    int read_cnt;
+    int cur_cnt = 0;
+    int i;
 
-    while (1)
+    read(sd, &my_seg_cnt, sizeof(my_seg_cnt));
+    read(sd, &i, sizeof(i));
+    for (int j = 0; j < seg_count; j++)
     {
-        // read();
+        if (j % seg_count == i)
+        {
+            cur_cnt = 0;
+
+            read(sd, &seg_size, sizeof(seg_size));
+            while (1)
+            {
+                if (cur_cnt == seg_size)
+                    break;
+                read_cnt = read(sd, tmp_buf, sizeof(tmp_buf));
+                strcat(final_buffer[i], tmp_buf);
+                cur_cnt += read_cnt;
+            }
+        }
     }
 }
 
