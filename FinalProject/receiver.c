@@ -26,7 +26,6 @@ void receiver(char *argv[])
     pthread_t receive_thread[max_receiver];
     int connect_flag;   // 다 connect 되어있는지 확인을 위한 flag
     int write_flag = 0; // 다 받아온 후 이제 write하라는 flag
-    struct Receiver_info other_receiver_info;
     int my_index;
     char receive_buffer[seg_count][seg_size];
     int cur_cnt = 0;
@@ -34,6 +33,14 @@ void receiver(char *argv[])
     char tmp_buf[1000];
     struct Peer_send peer_info;
     char final_buffer[seg_count][seg_size];
+    int receiver_adrs[10];
+    short receiver_ports[10];
+    int tmp_adr;
+    short tmp_port;
+    int send_connect_flag;
+    int max_receiver;
+    int read_cnt;
+    int total_read_cnt;
 
     // p2p connect를 위한 listen
     receive_p2p_accept_sd = socket(PF_INET, SOCK_STREAM, 0);
@@ -61,60 +68,122 @@ void receiver(char *argv[])
     if (connect(receive_sd, (struct sockaddr *)&sender_adr, sizeof(sender_adr)) == -1)
         error_handling("connect() error");
     else
-        puts("Connected..................");
+        puts("[CONNECT TO SENDER]");
+
+    read_exact(receive_sd, &max_receiver, sizeof(max_receiver));
+    printf("max_receiver :%d\n", max_receiver);
 
     // PORT write
-    write(receive_sd, argv[2], sizeof(argv[2])); // htons(atoi(argv[2]))
-
-    // 내 idx, 다른 receiver 정보, seg info 등 받아오기
-    read(receive_sd, &my_index, sizeof(my_index));
-
-    // 몇명인지 읽고.. rea_cnt +=
-    read(receive_sd, &other_receiver_info, sizeof(other_receiver_info));
-
-    // my_index보다 작은 index 값이면 accept
-    for (int i = 0; i < my_index; i++)
+    if ((strcmp(argv[1], "-p")) == 0)
     {
-
-        receive_p2p_request_accpet_sd_adr_sz = sizeof(receive_p2p_request_accpet_sd_adr);
-        receive_p2p_request_accpet_sd = accept(receive_p2p_accept_sd, (struct sockaddr *)&receive_p2p_request_accpet_sd_adr, &receive_p2p_request_accpet_sd_adr_sz);
-
-        peer_info.sd = receive_p2p_request_accpet_sd;
-        peer_info.my_idx = i;
-        pthread_create(&send_thread[i], NULL, peer_send, (void *)&peer_info);
-        pthread_create(&receive_thread[i], NULL, peer_receive, (void *)&peer_info);
+        short port = (short)atoi(argv[2]);
+        write_all(receive_sd, &port, sizeof(port));
+        printf("=send my port: %d\n", port);
     }
 
-    // my_index보다 큰 애한테 connect
-    for (int j = my_index + 1; j < seg_count; j++)
+    // 내 idx 받아오기
+    read_exact(receive_sd, &my_index, sizeof(my_index));
+    printf("=read my index: %d\n", my_index);
+
+    // 다른 receiver 정보 받아오기
+    memset(receiver_adrs, 0, sizeof(receiver_adrs));
+    memset(receiver_ports, 0, sizeof(receiver_ports));
+    read_exact(receive_sd, receiver_adrs, sizeof(int) * max_receiver);
+
+    read_exact(receive_sd, receiver_ports, sizeof(short) * max_receiver);
+
+    for (int j = 0; j < max_receiver; j++)
     {
-        receive_p2p_connect_sd = socket(PF_INET, SOCK_STREAM, 0);
-        if (receive_p2p_connect_sd == -1)
-            error_handling("socket() error");
+        // read(receive_sd, &receiver_ports[j], sizeof(receiver_ports[j]));
+        printf("=read other receiver ip: %d\n", receiver_adrs[j]);
+        printf("=read other receiver port: %d\n", receiver_ports[j]);
+    }
 
-        memset(&receive_p2p_sender_adr, 0, sizeof(receive_p2p_sender_adr));
-        receive_p2p_sender_adr.sin_family = AF_INET;
-        receive_p2p_sender_adr.sin_addr.s_addr = inet_addr((char *)other_receiver_info.ip[j]);
-        receive_p2p_sender_adr.sin_port = htons(atoi((char *)other_receiver_info.port[j]));
+    // my_index보다 작은 index 값이면 accept칟
+    // my_index보다 큰 애한테 connect
+    for (int i = 0; i < seg_count; i++)
+    {
+        if (i < my_index)
+        {
+            receive_p2p_request_accpet_sd_adr_sz = sizeof(receive_p2p_request_accpet_sd_adr);
+            receive_p2p_request_accpet_sd = accept(receive_p2p_accept_sd, (struct sockaddr *)&receive_p2p_request_accpet_sd_adr, &receive_p2p_request_accpet_sd_adr_sz);
+            printf("=[ACCET PEER]\n");
 
-        if (connect(receive_p2p_connect_sd, (struct sockaddr *)&receive_p2p_sender_adr, sizeof(receive_p2p_sender_adr)) == -1)
-            error_handling("connect() error");
-        else
-            puts("Connected..................");
+            peer_info.sd = receive_p2p_request_accpet_sd;
+            peer_info.my_idx = i;
+        }
+        else if (my_index < i)
+        {
+            receive_p2p_connect_sd = socket(PF_INET, SOCK_STREAM, 0);
+            if (receive_p2p_connect_sd == -1)
+                error_handling("socket() error");
 
-        peer_info.sd = receive_p2p_connect_sd;
-        peer_info.my_idx = j;
-        for (int a = 0; a < seg_count; a++)
-            peer_info.final_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
-        peer_info.final_buffer = (char **)final_buffer;
+            memset(&receive_p2p_sender_adr, 0, sizeof(receive_p2p_sender_adr));
+            receive_p2p_sender_adr.sin_family = AF_INET;
+            receive_p2p_sender_adr.sin_addr.s_addr = htonl(receiver_adrs[i]);
+            receive_p2p_sender_adr.sin_port = htons(receiver_ports[i]);
 
-        pthread_create(&send_thread[j], NULL, peer_send, (void *)&peer_info);
-        pthread_create(&receive_thread[j], NULL, peer_receive, (void *)&peer_info);
+            if (connect(receive_p2p_connect_sd, (struct sockaddr *)&receive_p2p_sender_adr, sizeof(receive_p2p_sender_adr)) == -1)
+                error_handling("connect() error");
+            else
+                printf("=[CONNECT TO OTHER PEER]\n");
+
+            peer_info.sd = receive_p2p_connect_sd;
+            peer_info.my_idx = i;
+            // for (int a = 0; a < seg_count; a++)
+            //     peer_info.final_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
+            // peer_info.final_buffer = (char **)final_buffer;
+        }
     }
 
     // write로 우리 다 연결됐어 알림
     connect_flag = 1;
-    write(receive_sd, &connect_flag, sizeof(connect_flag));
+    write_all(receive_sd, &connect_flag, sizeof(connect_flag));
+    printf("===[PEER CONNECTION DONE]===\n");
+
+    for (int j = 0; j < seg_count; j++)
+    {
+        pthread_create(&send_thread[j], NULL, peer_send, (void *)&peer_info);
+        pthread_create(&receive_thread[j], NULL, peer_receive, (void *)&peer_info);
+    }
+
+    // for (int i = 0; i < my_index; i++)
+    // {
+    //     receive_p2p_request_accpet_sd_adr_sz = sizeof(receive_p2p_request_accpet_sd_adr);
+    //     receive_p2p_request_accpet_sd = accept(receive_p2p_accept_sd, (struct sockaddr *)&receive_p2p_request_accpet_sd_adr, &receive_p2p_request_accpet_sd_adr_sz);
+    //     printf("=[ACCET PEER]\n");
+
+    //     peer_info.sd = receive_p2p_request_accpet_sd;
+    //     peer_info.my_idx = i;
+    //     pthread_create(&send_thread[i], NULL, peer_send, (void *)&peer_info);
+    //     pthread_create(&receive_thread[i], NULL, peer_receive, (void *)&peer_info);
+    // }
+
+    // for (int j = my_index + 1; j < seg_count; j++)
+    // {
+    //     receive_p2p_connect_sd = socket(PF_INET, SOCK_STREAM, 0);
+    //     if (receive_p2p_connect_sd == -1)
+    //         error_handling("socket() error");
+
+    //     memset(&receive_p2p_sender_adr, 0, sizeof(receive_p2p_sender_adr));
+    //     receive_p2p_sender_adr.sin_family = AF_INET;
+    //     receive_p2p_sender_adr.sin_addr.s_addr = htonl(receiver_adrs[j]);
+    //     receive_p2p_sender_adr.sin_port = htons(receiver_ports[j]);
+
+    //     if (connect(receive_p2p_connect_sd, (struct sockaddr *)&receive_p2p_sender_adr, sizeof(receive_p2p_sender_adr)) == -1)
+    //         error_handling("connect() error");
+    //     else
+    //         printf("=[CONNECT TO OTHER PEER]\n");
+
+    //     peer_info.sd = receive_p2p_connect_sd;
+    //     peer_info.my_idx = j;
+    //     for (int a = 0; a < seg_count; a++)
+    //         peer_info.final_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
+    //     peer_info.final_buffer = (char **)final_buffer;
+
+    //     pthread_create(&send_thread[j], NULL, peer_send, (void *)&peer_info);
+    //     pthread_create(&receive_thread[j], NULL, peer_receive, (void *)&peer_info);
+    // }
 
     // sender에게 받은 데이터 read
     for (int k = 0; k < seg_count; k++)

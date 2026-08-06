@@ -13,21 +13,28 @@ void sender(char *argv[])
     struct sockaddr_in sender_adr, receiver_adr;
     int receiver_adr_sz;
     struct stat file_stat;
+    int receiver_idx = 0;
     pthread_t tid[max_receiver];
     short tmp_port;
     FILE *fp;
     int fread_cnt;
     int cur_cnt = 0;
-    char tmp_buf[1000];
+    char tmp_buf[seg_size];
     char fread_buffer[seg_count][seg_size];
     int connect_flag;
     struct Sender_send_info sender_send_info;
+    int send_connect_flag = 1;
+    int write_cnt;
+
+    memset(receiver_sds, 0, sizeof(receiver_sds));
+    memset(receiver_adrs, 0, sizeof(receiver_adrs));
+    memset(receiver_ports, 0, sizeof(receiver_ports));
 
     // file size 구하기
     if (stat(file_name, &file_stat) == 0)
     {
         file_size = (int)file_stat.st_size;
-        printf("File size: %d\n", file_size);
+        printf("\n=SET GLOBAL VAR= File size: %d\n", file_size);
     }
 
     // segment 개수 구하기
@@ -36,11 +43,11 @@ void sender(char *argv[])
     else
         seg_count = (file_size / seg_size) + 1;
 
-    printf("Segment count: %d\n", seg_count);
+    printf("=SET GLOBAL VAR= Segment count: %d\n", seg_count);
 
     sender_sd = socket(PF_INET, SOCK_STREAM, 0);
 
-    memset(&sender_sd, 0, sizeof(sender_sd));
+    memset(&sender_adr, 0, sizeof(sender_adr));
     sender_adr.sin_family = AF_INET;
     sender_adr.sin_addr.s_addr = htonl(INADDR_ANY);
     sender_adr.sin_port = htons(atoi(argv[2]));
@@ -51,78 +58,139 @@ void sender(char *argv[])
     if (listen(sender_sd, 5) == -1)
         error_handling("listen() error");
 
+    printf("\n\nListening.....\n\n");
+
     // fread 돌면서 segment 채우기
     fp = fopen(file_name, "rb");
+
+    memset(fread_buffer, 0, sizeof(fread_buffer));
+
     for (int i = 0; i < seg_count; i++)
     {
         cur_cnt = 0;
         while (1)
         {
-            if (cur_cnt == seg_size)
+            memset(tmp_buf, 0, sizeof(tmp_buf));
+            if (cur_cnt >= seg_size)
                 break;
-            fread_cnt = fread((void *)tmp_buf, 1, sizeof(tmp_buf), fp);
-            strcat(fread_buffer[i], tmp_buf);
+            fread_cnt = fread((void *)tmp_buf, sizeof(char), seg_size, fp);
+            if (fread_cnt < seg_size)
+            {
+                tmp_buf[fread_cnt] = '\0';
+                // strcat(fread_buffer[i], tmp_buf);
+                memset(tmp_buf, 0, sizeof(tmp_buf));
+                printf("=DEBUG= fread count: %d\ni: %d\n", fread_cnt, i);
+
+                break;
+            }
+            tmp_buf[fread_cnt] = '\0';
+            // strcat(fread_buffer[i], tmp_buf);
+            memset(tmp_buf, 0, sizeof(tmp_buf));
+            printf("=DEBUG= fread count: %d\ni: %d\n", fread_cnt, i);
+
             cur_cnt += fread_cnt;
+            printf("=DEBUG= curr cnt: %d\n", cur_cnt);
+            memset(tmp_buf, 0, sizeof(tmp_buf));
         }
     }
+    printf("[FREAD DONE]\n\n");
+    fclose(fp);
 
-    // thread 생성
     while (1)
     {
-        if (max_receiver < receiver_idx)
+        if (max_receiver == receiver_idx)
             break;
 
         receiver_adr_sz = sizeof(receiver_adr);
         receiver_sd = accept(sender_sd, (struct sockaddr *)&receiver_adr, &receiver_adr_sz);
+        printf("[ACCEPT]\n");
+        write_all(receiver_sd, &max_receiver, sizeof(max_receiver));
 
         pthread_mutex_lock(&mutex);
-        receiver_sds[receiver_idx++] = receiver_sd;
+        printf("=idx= %d\n", receiver_idx);
+        receiver_sds[receiver_idx] = receiver_sd;
+        printf("receiver_sds[receiver_idx] : %d\n", receiver_sds[receiver_idx]);
+        receiver_adrs[receiver_idx] = receiver_adr.sin_addr.s_addr;
+        printf("receiver_adrs[receiver_idx] : %d\n", receiver_adrs[receiver_idx]);
         pthread_mutex_unlock(&mutex);
 
         // receivers ip, port 저장
-        receiver_info.ip[receiver_idx] = receiver_adr.sin_addr.s_addr;
-        read(receiver_sd, &tmp_port, sizeof(tmp_port));
-        receiver_info.port[receiver_idx] = tmp_port;
+        read_exact(receiver_sds[receiver_idx], &tmp_port, sizeof(tmp_port));
+        printf("=port: %d", tmp_port);
+        receiver_ports[receiver_idx] = tmp_port;
+        printf("[RECEIVER ACCEPT] %d, %d\n", receiver_adrs[receiver_idx], receiver_ports[receiver_idx]);
 
-        sender_send_info.sd = receiver_sd;
-        sender_send_info.my_idx = receiver_idx;
-        sender_send_info.fread_buffer = (char **)malloc(sizeof(char *) * seg_count);
-        for (int a = 0; a < seg_count; a++)
-            sender_send_info.fread_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
-
-        sender_send_info.fread_buffer = (char **)fread_buffer;
-
-        pthread_create(&tid[receiver_idx], NULL, sender_send, (void *)&sender_send_info);
-        pthread_detach(tid[receiver_idx]);
+        pthread_mutex_lock(&mutex);
+        receiver_idx++;
+        pthread_mutex_unlock(&mutex);
     }
+
+    printf("[CONNECT WITH RECEIVER DONE]\n\n");
+
+    for (int i = 0; i < receiver_idx; i++)
+    {
+        write_all(receiver_sds[i], &i, sizeof(i));
+
+        write_all(receiver_sds[i], receiver_adrs, sizeof(int) * receiver_idx);
+        write_all(receiver_sds[i], receiver_ports, sizeof(short) * receiver_idx);
+
+        for (int j = 0; j < max_receiver; j++)
+        {
+            // write(receiver_sds[i], &receiver_adrs[j], sizeof(receiver_adrs[j]));
+            printf("=write ip to recevier: %d\n", receiver_adrs[j]);
+            // write(receiver_sds[i], &receiver_ports[j], sizeof(receiver_ports[j]));
+            printf("=write port to recevier: %d\n", receiver_ports[j]);
+        }
+
+        // 다 connect 되어있는지 확인
+        read_exact(receiver_sds[i], &connect_flag, sizeof(connect_flag));
+
+        while (connect_flag != 1)
+            usleep(10000);
+
+        printf("===[PEER CONNECTION DONE]===\n");
+    }
+
+    struct Sender_send_info *tmp;
+    sender_send_info.fread_buffer = (char **)malloc(sizeof(char *) * seg_count);
+    for (int a = 0; a < seg_count; a++)
+        sender_send_info.fread_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
+
+    for (int t = 0; t < receiver_idx; t++)
+    {
+        tmp = (struct Sender_send_info *)malloc(sizeof(struct Sender_send_info));
+        tmp->sd = receiver_sds[t];
+        tmp->my_idx = t;
+        tmp->fread_buffer = (char **)fread_buffer;
+        printf("-%d, %d\n", tmp->sd, tmp->my_idx);
+
+        pthread_create(&tid[t], NULL, sender_send, (void *)tmp);
+        printf("======pthread_create==========\n");
+    }
+
+    for (int y = 0; y < receiver_idx; y++)
+        pthread_join(tid[y], NULL);
+
     close(sender_sd);
 }
 
 void *sender_send(void *arg)
 {
-    int receiver_sock = ((struct Sender_send_info *)arg)->sd;
-    int my_idx = ((struct Sender_send_info *)arg)->my_idx;
+    struct Sender_send_info info = *(struct Sender_send_info *)arg;
+    free(arg);
+    int receiver_sock = info.sd;
+    int my_idx = info.my_idx;
     char fread_buffer[seg_count][seg_size];
-    memcpy(fread_buffer, ((struct Sender_send_info *)arg)->fread_buffer, sizeof(((struct Sender_send_info *)arg)->fread_buffer));
+    memcpy(fread_buffer, info.fread_buffer, sizeof(info.fread_buffer));
     struct Pkt pkt;
-    int connect_flag;
 
-    for (int cur_idx = 0; cur_idx < seg_count; cur_idx++)
+    int cur_idx;
+    for (cur_idx = 0; cur_idx < seg_count; cur_idx++)
     {
         // 내것만 보내야함
         if (cur_idx % seg_count == my_idx)
         {
-            // 다른 receiver들 정보 보내기, 내 idx 보내기
-            write(receiver_sock, &cur_idx, sizeof(cur_idx));
-            write(receiver_sock, &receiver_info, sizeof(receiver_info));
-
-            // 다 connect 되어있는지 확인
-            read(receiver_sock, &connect_flag, sizeof(connect_flag));
-
-            while (connect_flag != 1)
-            {
-                usleep(10000);
-            }
+            printf("DEBUGG==========3\n");
 
             // segment each size 보내기
             if (my_idx = seg_count)
