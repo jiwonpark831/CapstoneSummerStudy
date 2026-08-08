@@ -10,6 +10,7 @@ int receiver_sds[10];
 int receiver_adrs[10];
 short receiver_ports[10];
 int write_flag = 0; // 다 받아온 후 이제 write하라는 flag
+int down_bytes = 0;
 
 pthread_mutex_t mutex;
 // struct Receiver_info receiver_info;

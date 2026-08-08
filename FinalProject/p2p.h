@@ -40,6 +40,7 @@ extern int receiver_adrs[10];
 extern short receiver_ports[10];
 
 extern int write_flag; // 다 받아온 후 이제 write하라는 flag
+extern int down_bytes;
 
 extern pthread_mutex_t mutex;
 

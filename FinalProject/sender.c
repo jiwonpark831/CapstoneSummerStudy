@@ -20,7 +20,7 @@ void sender(char *argv[])
     int fread_cnt;
     int cur_cnt = 0;
     char tmp_buf[seg_size];
-    char fread_buffer[seg_count][seg_size];
+    char **fread_buffer;
     int connect_flag;
     struct Sender_send_info sender_send_info;
     int send_connect_flag = 1;
@@ -62,8 +62,12 @@ void sender(char *argv[])
 
     // fread 돌면서 segment 채우기
     fp = fopen(file_name, "rb");
-
-    memset(fread_buffer, 0, sizeof(fread_buffer));
+    fread_buffer = (char **)malloc(sizeof(char *) * seg_count);
+    for (int a = 0; a < seg_count; a++)
+    {
+        fread_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
+        memset(fread_buffer[a], 0, seg_size);
+    }
 
     for (int i = 0; i < seg_count; i++)
     {
@@ -77,6 +81,7 @@ void sender(char *argv[])
             if (fread_cnt < seg_size)
             {
                 tmp_buf[fread_cnt] = '\0';
+                memcpy(&fread_buffer[i][cur_cnt], tmp_buf, fread_cnt);
                 // strcat(fread_buffer[i], tmp_buf);
                 memset(tmp_buf, 0, sizeof(tmp_buf));
                 printf("=DEBUG= fread count: %d\ni: %d\n", fread_cnt, i);
@@ -84,8 +89,7 @@ void sender(char *argv[])
                 break;
             }
             tmp_buf[fread_cnt] = '\0';
-            // strcat(fread_buffer[i], tmp_buf);
-            memset(tmp_buf, 0, sizeof(tmp_buf));
+            memcpy(&fread_buffer[i][cur_cnt], tmp_buf, fread_cnt);
             printf("=DEBUG= fread count: %d\ni: %d\n", fread_cnt, i);
 
             cur_cnt += fread_cnt;
@@ -105,6 +109,9 @@ void sender(char *argv[])
         receiver_sd = accept(sender_sd, (struct sockaddr *)&receiver_adr, &receiver_adr_sz);
         printf("[ACCEPT]\n");
         write_all(receiver_sd, &max_receiver, sizeof(max_receiver));
+        write_all(receiver_sd, &seg_count, sizeof(seg_count));
+        write_all(receiver_sd, &seg_size, sizeof(seg_size));
+        write_all(receiver_sd, &file_size, sizeof(file_size));
 
         pthread_mutex_lock(&mutex);
         printf("=idx= %d\n", receiver_idx);
@@ -152,16 +159,18 @@ void sender(char *argv[])
     }
 
     struct Sender_send_info *tmp;
-    sender_send_info.fread_buffer = (char **)malloc(sizeof(char *) * seg_count);
-    for (int a = 0; a < seg_count; a++)
-        sender_send_info.fread_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
 
     for (int t = 0; t < receiver_idx; t++)
     {
         tmp = (struct Sender_send_info *)malloc(sizeof(struct Sender_send_info));
         tmp->sd = receiver_sds[t];
         tmp->my_idx = t;
-        tmp->fread_buffer = (char **)fread_buffer;
+        tmp->fread_buffer = (char **)malloc(sizeof(char *) * seg_count);
+        for (int a = 0; a < seg_count; a++)
+        {
+            tmp->fread_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
+            memcpy(tmp->fread_buffer[a], fread_buffer[a], seg_size);
+        }
         printf("-%d, %d\n", tmp->sd, tmp->my_idx);
 
         pthread_create(&tid[t], NULL, sender_send, (void *)tmp);
@@ -180,33 +189,44 @@ void *sender_send(void *arg)
     free(arg);
     int receiver_sock = info.sd;
     int my_idx = info.my_idx;
-    char fread_buffer[seg_count][seg_size];
-    memcpy(fread_buffer, info.fread_buffer, sizeof(info.fread_buffer));
+    char **fread_buffer = info.fread_buffer;
     struct Pkt pkt;
+    int cur_cnt = 0;
+    int write_cnt;
+    int size;
+    int cur_seg_size;
 
     int cur_idx;
     for (cur_idx = 0; cur_idx < seg_count; cur_idx++)
     {
         // 내것만 보내야함
-        if (cur_idx % seg_count == my_idx)
+        if (cur_idx % max_receiver == my_idx)
         {
             printf("DEBUGG==========3\n");
 
             // segment each size 보내기
-            if (my_idx = seg_count)
-            {
-                int last_seg_size = file_size - ((seg_count - 1) * seg_size);
-                write(receiver_sock, &last_seg_size, sizeof(last_seg_size));
-            }
+            if (cur_idx == seg_count - 1)
+                cur_seg_size = file_size - ((seg_count - 1) * seg_size);
             else
-                write(receiver_sock, &seg_size, sizeof(seg_size));
+                cur_seg_size = seg_size;
+            write_all(receiver_sock, &cur_seg_size, sizeof(cur_seg_size));
 
+            cur_cnt = 0;
             while (1)
             {
+                if (cur_cnt >= cur_seg_size)
+                    break;
                 // write data 1000씩 보내기
-                memcpy(pkt.data, fread_buffer[my_idx], sizeof(fread_buffer[my_idx]));
-                pkt.size = strlen(pkt.data);
-                write(receiver_sock, &pkt, sizeof(pkt));
+                size = cur_seg_size - cur_cnt;
+                if (size > 1000)
+                    pkt.size = 1000;
+                else
+                    pkt.size = size;
+
+                memset(pkt.data, 0, sizeof(pkt.data));
+                memcpy(pkt.data, &fread_buffer[cur_idx][cur_cnt], pkt.size);
+                write_all(receiver_sock, &pkt, sizeof(pkt));
+                cur_cnt += pkt.size;
                 // time 측정을 위한 로직 필요!!!
 
                 // 진행도 출력
