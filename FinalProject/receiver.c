@@ -117,6 +117,11 @@ void receiver(char *argv[])
         write_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
         memset(write_buffer[a], 0, seg_size);
     }
+
+    pthread_mutex_lock(&mutex);
+    down_bytes = 0;
+    pthread_mutex_unlock(&mutex);
+
     // my_index보다 작은 index 값이면 accept칟
     if (my_index != 0)
     {
@@ -208,6 +213,9 @@ void receiver(char *argv[])
                 read_exact(receive_sd, &rcv_pkt, sizeof(rcv_pkt));
                 memcpy(&receive_buffer[k][cur_cnt], rcv_pkt.data, rcv_pkt.size);
                 cur_cnt += rcv_pkt.size;
+                pthread_mutex_lock(&mutex);
+                down_bytes += rcv_pkt.size;
+                pthread_mutex_unlock(&mutex);
             }
         }
     }
@@ -224,7 +232,7 @@ void receiver(char *argv[])
 
     printf("===[PEER -> PEER READ DONE]===\n");
 
-    FILE *final_fp = fopen("result_file", "wb");
+    FILE *final_fp = fopen("result_file.png", "wb");
 
     int write_size;
     for (int i = 0; i < seg_count; i++)
@@ -265,17 +273,23 @@ void *peer_send(void *arg)
     int write_cnt;
     int size;
     int cur_seg_size;
+    int flag = 0;
 
     for (int i = 0; i < seg_count; i++)
         if (i % max_receiver == my_idx)
             my_seg_cnt++;
 
-    write_all(sd, &my_seg_cnt, sizeof(my_seg_cnt));
-
-    while (write_flag != 1)
+    while (1)
     {
+        pthread_mutex_lock(&mutex);
+        flag = write_flag;
+        pthread_mutex_unlock(&mutex);
+        if (flag == 1)
+            break;
         usleep(10000);
     }
+
+    write_all(sd, &my_seg_cnt, sizeof(my_seg_cnt));
 
     for (int i = 0; i < seg_count; i++)
     {
@@ -345,15 +359,16 @@ void *peer_receive(void *arg)
 
             struct Pkt receive_pkt;
 
-            read_exact(sd, &receive_pkt, sizeof(receive_pkt));
+            if (read_exact(sd, &receive_pkt, sizeof(receive_pkt)) < 0)
+                return NULL;
             memcpy(&final_buffer[i][cur_cnt], receive_pkt.data, receive_pkt.size);
             cur_cnt += receive_pkt.size;
             pthread_mutex_lock(&mutex);
 
             down_bytes += receive_pkt.size;
-            // printf("\x1b[3J\x1b[2J\x1b[H");
-            down_rate = ((down_bytes / file_size) * 100);
-            printf("Receiver from Peer #%d: (%d/%d)\n",
+            printf("\x1b[3J\x1b[2J\x1b[H");
+            down_rate = (int)(((double)down_bytes / file_size) * 100);
+            printf("Receiver from Peer (progress %d%%): (%d/%d)\n",
                    down_rate, down_bytes, file_size);
             pthread_mutex_unlock(&mutex);
         }
