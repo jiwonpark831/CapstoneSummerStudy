@@ -22,9 +22,6 @@ void sender(char *argv[])
     char tmp_buf[seg_size];
     char **fread_buffer;
     int connect_flag;
-    struct Sender_send_info sender_send_info;
-    int send_connect_flag = 1;
-    int write_cnt;
 
     memset(receiver_sds, 0, sizeof(receiver_sds));
     memset(receiver_adrs, 0, sizeof(receiver_adrs));
@@ -34,7 +31,13 @@ void sender(char *argv[])
     if (stat(file_name, &file_stat) == 0)
     {
         file_size = (int)file_stat.st_size;
-        printf("\n=SET GLOBAL VAR= File size: %d\n", file_size);
+        printf("\n=SET GLOBAL VAR= File size: %lld\n", file_size);
+    }
+
+    if (file_size == 0)
+    {
+        printf("File size is 0\n");
+        exit(1);
     }
 
     // segment 개수 구하기
@@ -158,8 +161,6 @@ void sender(char *argv[])
         printf("===[PEER CONNECTION DONE]===\n");
     }
 
-    clock_t start = clock();
-
     struct Sender_send_info *tmp;
 
     for (int t = 0; t < receiver_idx; t++)
@@ -194,9 +195,8 @@ void *sender_send(void *arg)
     char **fread_buffer = info.fread_buffer;
     struct Pkt pkt;
     int cur_cnt = 0;
-    int write_cnt;
     int size;
-    int cur_seg_size;
+    long long cur_seg_size;
 
     int cur_idx;
     for (cur_idx = 0; cur_idx < seg_count; cur_idx++)
@@ -208,7 +208,7 @@ void *sender_send(void *arg)
 
             // segment each size 보내기
             if (cur_idx == seg_count - 1)
-                cur_seg_size = file_size - ((seg_count - 1) * seg_size);
+                cur_seg_size = file_size - ((long long)(seg_count - 1) * seg_size);
             else
                 cur_seg_size = seg_size;
             write_all(receiver_sock, &cur_seg_size, sizeof(cur_seg_size));
@@ -258,7 +258,10 @@ void print_sender_result(int idx, int bytes)
     diffTime = (endTime.tv_sec - startTime.tv_sec) + ((endTime.tv_usec - startTime.tv_usec) / 1000000.0);
     if (diffTime == 0.0)
         diffTime = 0.1;
-    percent = (int)(((double)total_bytes / file_size) * 100);
+    if (file_size > 0)
+        percent = (int)(((double)total_bytes / file_size) * 100);
+    else
+        percent = 100;
     bps = (total_bytes * 8.0) / (diffTime * 1000000.0);
     int cnt = (percent * 25) / 100;
     printf("\x1b[3J\x1b[2J\x1b[H");
@@ -267,11 +270,11 @@ void print_sender_result(int idx, int bytes)
         printf("#");
     for (int j = cnt; j < 25; j++)
         printf(" ");
-    printf("] %d%% (%d/%dBytes) %.2fMbps (%.2fs)\n", percent, total_bytes, file_size, bps, diffTime);
+    printf("] %d%% (%lld/%lldBytes) %.2fMbps (%.2fs)\n", percent, total_bytes, file_size, bps, diffTime);
     for (int z = 0; z < max_receiver; z++)
     {
         double my_bps = (each_bytes[z] * 8.0) / (diffTime * 1000000.0);
-        printf("To Receiving Peer #%d : %.2fMbps (%d Bytes Sent / %.2fs)\n", z + 1, my_bps, each_bytes[z], diffTime);
+        printf("To Receiving Peer #%d : %.2fMbps (%lld Bytes Sent / %.2fs)\n", z + 1, my_bps, each_bytes[z], diffTime);
     }
     pthread_mutex_unlock(&mutex);
 }
