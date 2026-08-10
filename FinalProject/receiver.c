@@ -4,6 +4,7 @@ struct Peer_send
 {
     int sd;
     int my_idx;
+    int peer_idx;
     char **final_buffer;
 };
 
@@ -42,6 +43,12 @@ void receiver(char *argv[])
     int total_read_cnt;
     int cur_seg_size;
     int thread_idx = 0;
+
+    pthread_mutex_lock(&mutex);
+    start_flag = 0;
+    total_bytes = 0;
+    memset(each_bytes, 0, sizeof(each_bytes));
+    pthread_mutex_unlock(&mutex);
 
     // p2p connect를 위한 listen
     receive_p2p_accept_sd = socket(PF_INET, SOCK_STREAM, 0);
@@ -134,7 +141,7 @@ void receiver(char *argv[])
             // printf("===== try to aceept smaller sd\n");
             printf("%d\n", receive_p2p_request_accpet_sd_adr_sz);
 
-            receive_p2p_request_accpet_sds[i] = accept(receive_p2p_accept_sd, (struct sockaddr *)&receive_p2p_request_accpet_sd_adr, &receive_p2p_request_accpet_sd_adr_sz);
+            int accept_sd = accept(receive_p2p_accept_sd, (struct sockaddr *)&receive_p2p_request_accpet_sd_adr, &receive_p2p_request_accpet_sd_adr_sz);
             // printf("========try to aceept smaller sd\n");
 
             printf("=[ACCET PEER]\n");
@@ -144,11 +151,13 @@ void receiver(char *argv[])
             struct Peer_send *receive_tmp;
             receive_tmp = (struct Peer_send *)malloc(sizeof(struct Peer_send));
 
-            send_tmp->sd = receive_p2p_request_accpet_sds[i];
+            send_tmp->sd = accept_sd;
             send_tmp->my_idx = my_index;
+            send_tmp->peer_idx = i;
             send_tmp->final_buffer = receive_buffer;
-            receive_tmp->sd = receive_p2p_request_accpet_sds[i];
+            receive_tmp->sd = accept_sd;
             receive_tmp->my_idx = my_index;
+            receive_tmp->peer_idx = i;
             receive_tmp->final_buffer = receive_buffer;
             pthread_create(&send_thread[thread_idx], NULL, peer_send, (void *)send_tmp);
             pthread_create(&receive_thread[thread_idx], NULL, peer_receive, (void *)receive_tmp);
@@ -182,10 +191,12 @@ void receiver(char *argv[])
 
             send_tmp->sd = receive_p2p_connect_sd;
             send_tmp->my_idx = my_index;
+            send_tmp->peer_idx = j;
             send_tmp->final_buffer = receive_buffer;
 
             receive_tmp->sd = receive_p2p_connect_sd;
             receive_tmp->my_idx = my_index;
+            receive_tmp->peer_idx = j;
             receive_tmp->final_buffer = receive_buffer;
 
             pthread_create(&send_thread[thread_idx], NULL, peer_send, (void *)send_tmp);
@@ -213,14 +224,17 @@ void receiver(char *argv[])
                 read_exact(receive_sd, &rcv_pkt, sizeof(rcv_pkt));
                 memcpy(&receive_buffer[k][cur_cnt], rcv_pkt.data, rcv_pkt.size);
                 cur_cnt += rcv_pkt.size;
-                pthread_mutex_lock(&mutex);
-                down_bytes += rcv_pkt.size;
-                pthread_mutex_unlock(&mutex);
+                // pthread_mutex_lock(&mutex);
+                // down_bytes += rcv_pkt.size;
+                // pthread_mutex_unlock(&mutex);
+                print_receiver_result(0, rcv_pkt.size, my_index);
             }
         }
     }
-
+    pthread_mutex_lock(&mutex);
     write_flag = 1;
+    pthread_mutex_unlock(&mutex);
+
     printf("===[SENDER -> RECEIVER READ DONE]===\n");
 
     // pthread join
@@ -247,6 +261,8 @@ void receiver(char *argv[])
 
     fclose(final_fp);
     printf("===[WRITE FILE DONE]===\n");
+
+    sleep(10);
 
     close(receive_p2p_accept_sd);
     close(receive_sd);
@@ -289,7 +305,11 @@ void *peer_send(void *arg)
         usleep(10000);
     }
 
-    write_all(sd, &my_seg_cnt, sizeof(my_seg_cnt));
+    if (write_all(sd, &my_seg_cnt, sizeof(my_seg_cnt)) < 0)
+        return NULL;
+
+    if (my_seg_cnt == 0)
+        return NULL;
 
     for (int i = 0; i < seg_count; i++)
     {
@@ -297,14 +317,15 @@ void *peer_send(void *arg)
         {
             cur_cnt = 0;
             // seg index.. size 등등 다, seg 몇개인지
-            write_all(sd, &i, sizeof(i));
+            if (write_all(sd, &i, sizeof(i)) < 0)
+                return NULL;
 
             if (i == seg_count - 1)
                 cur_seg_size = file_size - ((seg_count - 1) * seg_size);
             else
                 cur_seg_size = seg_size;
-
-            write_all(sd, &cur_seg_size, sizeof(cur_seg_size));
+            if (write_all(sd, &cur_seg_size, sizeof(cur_seg_size)) < 0)
+                return NULL;
 
             while (1)
             {
@@ -319,7 +340,8 @@ void *peer_send(void *arg)
                 // write data 1000씩 보내기
                 memset(send_pkt.data, 0, sizeof(send_pkt.data));
                 memcpy(send_pkt.data, &final_buffer[i][cur_cnt], send_pkt.size);
-                write_all(sd, &send_pkt, sizeof(send_pkt));
+                if (write_all(sd, &send_pkt, sizeof(send_pkt)) < 0)
+                    return NULL;
                 cur_cnt += send_pkt.size;
                 // time 측정을 위한 로직 필요!!!
             }
@@ -334,6 +356,8 @@ void *peer_receive(void *arg)
     free(arg);
 
     int sd = info.sd;
+    int my_index = info.my_idx;
+    int peer_index = info.peer_idx;
     char **final_buffer = info.final_buffer;
     int my_seg_cnt = 0; // 내가 보낼 seg 개수
     char tmp_buf[1000];
@@ -343,13 +367,30 @@ void *peer_receive(void *arg)
     int i;
     int cur_seg_size;
     int down_rate = 0;
+    int flag = 0;
+
+    while (1)
+    {
+        pthread_mutex_lock(&mutex);
+        flag = write_flag;
+        pthread_mutex_unlock(&mutex);
+        if (flag == 1)
+            break;
+        usleep(10000);
+    }
 
     if (read_exact(sd, &my_seg_cnt, sizeof(my_seg_cnt)) < 0)
         return NULL;
+
+    if (my_seg_cnt == 0)
+        return NULL;
+
     for (int j = 0; j < my_seg_cnt; j++)
     {
-        read_exact(sd, &i, sizeof(i));
-        read_exact(sd, &cur_seg_size, sizeof(cur_seg_size));
+        if (read_exact(sd, &i, sizeof(i)) < 0)
+            return NULL;
+        if (read_exact(sd, &cur_seg_size, sizeof(cur_seg_size)) < 0)
+            return NULL;
         cur_cnt = 0;
 
         while (1)
@@ -363,19 +404,62 @@ void *peer_receive(void *arg)
                 return NULL;
             memcpy(&final_buffer[i][cur_cnt], receive_pkt.data, receive_pkt.size);
             cur_cnt += receive_pkt.size;
-            pthread_mutex_lock(&mutex);
 
-            down_bytes += receive_pkt.size;
-            printf("\x1b[3J\x1b[2J\x1b[H");
-            down_rate = (int)(((double)down_bytes / file_size) * 100);
-            printf("Receiver from Peer (progress %d%%): (%d/%d)\n",
-                   down_rate, down_bytes, file_size);
-            pthread_mutex_unlock(&mutex);
+            print_receiver_result(peer_index + 1, receive_pkt.size, my_index);
+            // pthread_mutex_lock(&mutex);
+
+            // down_bytes += receive_pkt.size;
+            // printf("\x1b[3J\x1b[2J\x1b[H");
+            // down_rate = (int)(((double)down_bytes / file_size) * 100);
+            // printf("Receiver from Peer (progress %d%%): (%d/%d)\n",
+            //        down_rate, down_bytes, file_size);
+            // pthread_mutex_unlock(&mutex);
         }
     }
     return NULL;
 }
 
-void print_receiver_result()
+void print_receiver_result(int idx, int bytes, int my_idx)
 {
+
+    struct timeval endTime;
+    double diffTime;
+    int percent;
+    double bps;
+
+    pthread_mutex_lock(&mutex);
+
+    if (start_flag == 0)
+    {
+        gettimeofday(&startTime, NULL);
+        start_flag = 1;
+    }
+
+    gettimeofday(&endTime, NULL);
+    each_bytes[idx] += bytes;
+    total_bytes += bytes;
+    diffTime = (endTime.tv_sec - startTime.tv_sec) + ((endTime.tv_usec - startTime.tv_usec) / 1000000.0);
+    if (diffTime == 0.0)
+        diffTime = 0.1;
+    percent = (int)(((double)total_bytes / file_size) * 100);
+    bps = (total_bytes * 8.0) / (diffTime * 1000000.0);
+    int cnt = (percent * 25) / 100;
+    printf("\x1b[3J\x1b[2J\x1b[H");
+    printf("Receiving Peer %d [", my_idx + 1);
+    for (int i = 0; i < cnt; i++)
+        printf("#");
+    for (int j = cnt; j < 25; j++)
+        printf(" ");
+    printf("] %d%% (%d/%dBytes) %.2fMbps (%.2fs)\n", percent, total_bytes, file_size, bps, diffTime);
+    double sender_bps = (each_bytes[0] * 8.0) / (diffTime * 1000000.0);
+    printf("From Sending Peer : %.2fMbps (%d Bytes Sent / %.2fs)\n", sender_bps, each_bytes[0], diffTime);
+
+    for (int z = 0; z < max_receiver; z++)
+    {
+        if (z == my_idx)
+            continue;
+        double my_bps = (each_bytes[z + 1] * 8.0) / (diffTime * 1000000.0);
+        printf("From Receiving Peer #%d : %.2fMbps (%d Bytes Sent / %.2fs)\n", z + 1, my_bps, each_bytes[z + 1], diffTime);
+    }
+    pthread_mutex_unlock(&mutex);
 }

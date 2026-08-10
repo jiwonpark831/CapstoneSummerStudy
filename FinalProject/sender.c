@@ -158,6 +158,8 @@ void sender(char *argv[])
         printf("===[PEER CONNECTION DONE]===\n");
     }
 
+    clock_t start = clock();
+
     struct Sender_send_info *tmp;
 
     for (int t = 0; t < receiver_idx; t++)
@@ -227,16 +229,49 @@ void *sender_send(void *arg)
                 memcpy(pkt.data, &fread_buffer[cur_idx][cur_cnt], pkt.size);
                 write_all(receiver_sock, &pkt, sizeof(pkt));
                 cur_cnt += pkt.size;
-                // time 측정을 위한 로직 필요!!!
 
                 // 진행도 출력
-                print_sender_result();
+                print_sender_result(my_idx, pkt.size);
             }
         }
     }
 }
 
-void print_sender_result()
+void print_sender_result(int idx, int bytes)
 {
-    printf("print_sender_result\n");
+    struct timeval endTime;
+    double diffTime;
+    int percent;
+    double bps;
+
+    pthread_mutex_lock(&mutex);
+
+    if (start_flag == 0)
+    {
+        gettimeofday(&startTime, NULL);
+        start_flag = 1;
+    }
+
+    gettimeofday(&endTime, NULL);
+    each_bytes[idx] += bytes;
+    total_bytes += bytes;
+    diffTime = (endTime.tv_sec - startTime.tv_sec) + ((endTime.tv_usec - startTime.tv_usec) / 1000000.0);
+    if (diffTime == 0.0)
+        diffTime = 0.1;
+    percent = (int)(((double)total_bytes / file_size) * 100);
+    bps = (total_bytes * 8.0) / (diffTime * 1000000.0);
+    int cnt = (percent * 25) / 100;
+    printf("\x1b[3J\x1b[2J\x1b[H");
+    printf("Sending Peer [");
+    for (int i = 0; i < cnt; i++)
+        printf("#");
+    for (int j = cnt; j < 25; j++)
+        printf(" ");
+    printf("] %d%% (%d/%dBytes) %.2fMbps (%.2fs)\n", percent, total_bytes, file_size, bps, diffTime);
+    for (int z = 0; z < max_receiver; z++)
+    {
+        double my_bps = (each_bytes[z] * 8.0) / (diffTime * 1000000.0);
+        printf("To Receiving Peer #%d : %.2fMbps (%d Bytes Sent / %.2fs)\n", z + 1, my_bps, each_bytes[z], diffTime);
+    }
+    pthread_mutex_unlock(&mutex);
 }
