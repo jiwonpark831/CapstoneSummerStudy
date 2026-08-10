@@ -15,6 +15,11 @@ int down_bytes = 0;
 pthread_mutex_t mutex;
 // struct Receiver_info receiver_info;
 
+struct timeval startTime;
+int each_bytes[10] = {0};
+int total_bytes = 0;
+int start_flag = 0;
+
 int main(int argc, char *argv[])
 {
     pthread_mutex_init(&mutex, NULL);

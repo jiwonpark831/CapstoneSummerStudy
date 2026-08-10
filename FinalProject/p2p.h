@@ -10,6 +10,7 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 struct Pkt
 {
@@ -24,8 +25,8 @@ void *peer_send(void *arg);
 void *peer_receive(void *arg);
 void error_handling(char *msg);
 void opt_setting(char *argv[]);
-void print_sender_result();
-void print_receiver_result();
+void print_sender_result(int idx, int bytes);
+void print_receiver_result(int idx, int bytes, int my_idx);
 int read_exact(int fd, void *buf, size_t len);
 int write_all(int fd, const void *buf, size_t len);
 
@@ -41,6 +42,11 @@ extern short receiver_ports[10];
 
 extern int write_flag; // 다 받아온 후 이제 write하라는 flag
 extern int down_bytes;
+
+extern struct timeval startTime;
+extern int each_bytes[10];
+extern int total_bytes;
+extern int start_flag;
 
 extern pthread_mutex_t mutex;
 
