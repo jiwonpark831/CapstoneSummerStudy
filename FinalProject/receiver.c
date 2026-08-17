@@ -69,6 +69,7 @@ void receiver(char *argv[])
     else
         puts("[CONNECT TO SENDER]");
 
+    read_exact(receive_sd, file_name, sizeof(file_name));
     read_exact(receive_sd, &max_receiver, sizeof(max_receiver));
     read_exact(receive_sd, &seg_count, sizeof(seg_count));
     read_exact(receive_sd, &seg_size, sizeof(seg_size));
@@ -77,12 +78,12 @@ void receiver(char *argv[])
     printf("max_receiver :%d\n", max_receiver);
 
     // PORT write
-    if ((strcmp(argv[1], "-p")) == 0)
-    {
-        short port = (short)atoi(argv[2]);
-        write_all(receive_sd, &port, sizeof(port));
-        printf("=send my port: %d\n", port);
-    }
+
+    // uint32_t my_ip = inet_addr(argv[3]);
+    short port = (short)atoi(argv[2]);
+    // write_all(receive_sd, &my_ip, sizeof(my_ip));
+    write_all(receive_sd, &port, sizeof(port));
+    printf("=send my port: %d\n", port);
 
     // 내 idx 받아오기
     read_exact(receive_sd, &my_index, sizeof(my_index));
@@ -189,13 +190,13 @@ void receiver(char *argv[])
                 thread_idx++;
             }
         }
-
-        connect_flag = 1;
-        write_all(receive_sd, &connect_flag, sizeof(connect_flag));
-        printf("===[PEER CONNECTION DONE]===\n");
     }
     else
         printf("skippig peer connect because peer count is 1\n");
+
+    connect_flag = 1;
+    write_all(receive_sd, &connect_flag, sizeof(connect_flag));
+    printf("===[PEER CONNECTION DONE]===\n");
 
     // sender에게 받은 데이터 read
     for (int k = 0; k < seg_count; k++)
@@ -230,10 +231,8 @@ void receiver(char *argv[])
     }
 
     printf("===[PEER -> PEER READ DONE]===\n");
-
     char save_file_name[20];
-    sprintf(save_file_name, "%s_%d", file_name, my_index);
-
+    sprintf(save_file_name, "%d%s", my_index, file_name);
     FILE *final_fp = fopen(save_file_name, "wb");
 
     long long write_size;
@@ -384,7 +383,10 @@ void *peer_receive(void *arg)
             struct Pkt receive_pkt;
 
             if (read_exact(sd, &receive_pkt, sizeof(receive_pkt)) < 0)
-                return NULL;
+            {
+                printf("[PEER CONNECTION DOWN]\n");
+                exit(1);
+            }
             memcpy(&final_buffer[i][cur_cnt], receive_pkt.data, receive_pkt.size);
             cur_cnt += receive_pkt.size;
 
@@ -414,8 +416,8 @@ void print_receiver_result(int idx, int bytes, int my_idx)
     each_bytes[idx] += bytes;
     total_bytes += bytes;
     diffTime = (endTime.tv_sec - startTime.tv_sec) + ((endTime.tv_usec - startTime.tv_usec) / 1000000.0);
-    if (diffTime == 0.0)
-        diffTime = 0.1;
+    if (diffTime <= 0.000001)
+        diffTime = 0.00001;
     if (file_size > 0)
         percent = (int)(((double)total_bytes / file_size) * 100);
     else

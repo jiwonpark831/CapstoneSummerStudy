@@ -111,6 +111,7 @@ void sender(char *argv[])
         receiver_adr_sz = sizeof(receiver_adr);
         receiver_sd = accept(sender_sd, (struct sockaddr *)&receiver_adr, &receiver_adr_sz);
         printf("[ACCEPT]\n");
+        write_all(receiver_sd, file_name, sizeof(file_name));
         write_all(receiver_sd, &max_receiver, sizeof(max_receiver));
         write_all(receiver_sd, &seg_count, sizeof(seg_count));
         write_all(receiver_sd, &seg_size, sizeof(seg_size));
@@ -125,8 +126,11 @@ void sender(char *argv[])
         pthread_mutex_unlock(&mutex);
 
         // receivers ip, port 저장
+        uint32_t real_receiver_ip;
+        // read_exact(receiver_sds[receiver_idx], &real_receiver_ip, sizeof(real_receiver_ip));
         read_exact(receiver_sds[receiver_idx], &tmp_port, sizeof(tmp_port));
         printf("=port: %d", tmp_port);
+        receiver_adrs[receiver_idx] = receiver_adr.sin_addr.s_addr;
         receiver_ports[receiver_idx] = tmp_port;
         printf("[RECEIVER ACCEPT] %d, %d\n", receiver_adrs[receiver_idx], receiver_ports[receiver_idx]);
 
@@ -141,8 +145,8 @@ void sender(char *argv[])
     {
         write_all(receiver_sds[i], &i, sizeof(i));
 
-        write_all(receiver_sds[i], receiver_adrs, sizeof(int) * receiver_idx);
-        write_all(receiver_sds[i], receiver_ports, sizeof(short) * receiver_idx);
+        write_all(receiver_sds[i], receiver_adrs, sizeof(int) * max_receiver);
+        write_all(receiver_sds[i], receiver_ports, sizeof(short) * max_receiver);
 
         for (int j = 0; j < max_receiver; j++)
         {
@@ -151,15 +155,14 @@ void sender(char *argv[])
             // write(receiver_sds[i], &receiver_ports[j], sizeof(receiver_ports[j]));
             printf("=write port to recevier: %d\n", receiver_ports[j]);
         }
-
+    }
+    for (int i = 0; i < receiver_idx; i++)
+    {
         // 다 connect 되어있는지 확인
         read_exact(receiver_sds[i], &connect_flag, sizeof(connect_flag));
-
-        while (connect_flag != 1)
-            usleep(10000);
-
-        printf("===[PEER CONNECTION DONE]===\n");
     }
+
+    printf("===[PEER CONNECTION DONE]===\n");
 
     struct Sender_send_info *tmp;
 
@@ -235,6 +238,7 @@ void *sender_send(void *arg)
             }
         }
     }
+    return NULL;
 }
 
 void print_sender_result(int idx, int bytes)
@@ -256,8 +260,8 @@ void print_sender_result(int idx, int bytes)
     each_bytes[idx] += bytes;
     total_bytes += bytes;
     diffTime = (endTime.tv_sec - startTime.tv_sec) + ((endTime.tv_usec - startTime.tv_usec) / 1000000.0);
-    if (diffTime == 0.0)
-        diffTime = 0.1;
+    if (diffTime <= 0.00001)
+        diffTime = 0.00001;
     if (file_size > 0)
         percent = (int)(((double)total_bytes / file_size) * 100);
     else

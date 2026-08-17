@@ -1,32 +1,20 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
-LDFLAGS = 
+TARGET = p2p
 
-TARGET_SENDER = sender
-TARGET_RECEIVER = receiver
+SRCS = p2p.c sender.c receiver.c
+OBJS = $(SRCS:.c=.o)
+HEADERS = p2p.h
 
-HDRS = p2p.h
-COMMON_SRCS = php.c
-COMMON_OBJS = $(COMMON_SRCS:.c=.o)
+all: $(TARGET)
 
-SENDER_SRCS = sender.c $(COMMON_SRCS)
-SENDER_OBJS = $(SENDER_SRCS:.c=.o)
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
 
-RECEIVER_SRCS = receiver.c $(COMMON_SRCS)
-RECEIVER_OBJS = $(RECEIVER_SRCS:.c=.o)
-
-all: $(TARGET_SENDER) $(TARGET_RECEIVER)
-
-$(TARGET_SENDER): $(SENDER_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-
-$(TARGET_RECEIVER): $(RECEIVER_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-
-%.o: %.c $(HDRS)
+%.o: %.c $(HEADERS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f *.o $(TARGET_SENDER) $(TARGET_RECEIVER)
+	rm -f $(OBJS) $(TARGET)
 
 .PHONY: all clean
