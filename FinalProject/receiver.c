@@ -215,11 +215,11 @@ void receiver(char *argv[])
                 cur_cnt += rcv_pkt.size;
                 print_receiver_result(0, rcv_pkt.size, my_index);
             }
+            pthread_mutex_lock(&mutex);
+            write_flags[k] = 1;
+            pthread_mutex_unlock(&mutex);
         }
     }
-    pthread_mutex_lock(&mutex);
-    write_flag = 1;
-    pthread_mutex_unlock(&mutex);
 
     printf("===[SENDER -> RECEIVER READ DONE]===\n");
 
@@ -281,16 +281,6 @@ void *peer_send(void *arg)
         if (i % max_receiver == my_idx)
             my_seg_cnt++;
 
-    while (1)
-    {
-        pthread_mutex_lock(&mutex);
-        flag = write_flag;
-        pthread_mutex_unlock(&mutex);
-        if (flag == 1)
-            break;
-        usleep(10000);
-    }
-
     if (write_all(sd, &my_seg_cnt, sizeof(my_seg_cnt)) < 0)
         return NULL;
 
@@ -301,6 +291,16 @@ void *peer_send(void *arg)
     {
         if (i % max_receiver == my_idx)
         {
+            while (1)
+            {
+                pthread_mutex_lock(&mutex);
+                flag = write_flags[i];
+                pthread_mutex_unlock(&mutex);
+                if (flag == 1)
+                    break;
+                usleep(10000);
+            }
+
             cur_cnt = 0;
             // seg index.. size 등등 다, seg 몇개인지
             if (write_all(sd, &i, sizeof(i)) < 0)
@@ -327,7 +327,11 @@ void *peer_send(void *arg)
                 memset(send_pkt.data, 0, sizeof(send_pkt.data));
                 memcpy(send_pkt.data, &final_buffer[i][cur_cnt], send_pkt.size);
                 if (write_all(sd, &send_pkt, sizeof(send_pkt)) < 0)
-                    return NULL;
+                {
+                    error_handling("[PEER CONNECTION DOWN]\n");
+                    exit(1);
+                }
+
                 cur_cnt += send_pkt.size;
                 // time 측정을 위한 로직 필요!!!
             }
@@ -350,16 +354,6 @@ void *peer_receive(void *arg)
     int i;
     long long cur_seg_size;
     int flag = 0;
-
-    while (1)
-    {
-        pthread_mutex_lock(&mutex);
-        flag = write_flag;
-        pthread_mutex_unlock(&mutex);
-        if (flag == 1)
-            break;
-        usleep(10000);
-    }
 
     if (read_exact(sd, &my_seg_cnt, sizeof(my_seg_cnt)) < 0)
         return NULL;
@@ -384,7 +378,7 @@ void *peer_receive(void *arg)
 
             if (read_exact(sd, &receive_pkt, sizeof(receive_pkt)) < 0)
             {
-                printf("[PEER CONNECTION DOWN]\n");
+                error_handling("[PEER CONNECTION DOWN]\n");
                 exit(1);
             }
             memcpy(&final_buffer[i][cur_cnt], receive_pkt.data, receive_pkt.size);

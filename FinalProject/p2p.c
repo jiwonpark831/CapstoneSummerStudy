@@ -9,7 +9,7 @@ int seg_count;       // segment 개수
 int receiver_sds[10];
 int receiver_adrs[10];
 short receiver_ports[10];
-int write_flag = 0; // 다 받아온 후 이제 write하라는 flag
+// int write_flag = 0; // 다 받아온 후 이제 write하라는 flag
 
 pthread_mutex_t mutex;
 // struct Receiver_info receiver_info;
@@ -18,6 +18,7 @@ struct timeval startTime;
 long long each_bytes[10] = {0};
 long long total_bytes = 0;
 int start_flag = 0;
+int write_flags[100] = {0};
 
 int main(int argc, char *argv[])
 {

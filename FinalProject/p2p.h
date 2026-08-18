@@ -40,12 +40,13 @@ extern int receiver_sds[10];
 extern int receiver_adrs[10];
 extern short receiver_ports[10];
 
-extern int write_flag; // 다 받아온 후 이제 write하라는 flag
+// extern int write_flag; // 다 받아온 후 이제 write하라는 flag
 
 extern struct timeval startTime;
 extern long long each_bytes[10];
 extern long long total_bytes;
 extern int start_flag;
+extern int write_flags[100];
 
 extern pthread_mutex_t mutex;
 
