@@ -29,7 +29,6 @@ void receiver(char *argv[])
     int my_index;
     char **receive_buffer;
     int cur_cnt = 0;
-    char **write_buffer;
     int receiver_adrs[10];
     short receiver_ports[10];
     long long cur_seg_size;
@@ -40,6 +39,7 @@ void receiver(char *argv[])
     total_bytes = 0;
     memset(each_bytes, 0, sizeof(each_bytes));
     pthread_mutex_unlock(&mutex);
+    memset(write_flags, 0, sizeof(write_flags));
 
     // p2p connect를 위한 listen
     receive_p2p_accept_sd = socket(PF_INET, SOCK_STREAM, 0);
@@ -78,10 +78,7 @@ void receiver(char *argv[])
     printf("max_receiver :%d\n", max_receiver);
 
     // PORT write
-
-    // uint32_t my_ip = inet_addr(argv[3]);
     short port = (short)atoi(argv[2]);
-    // write_all(receive_sd, &my_ip, sizeof(my_ip));
     write_all(receive_sd, &port, sizeof(port));
     printf("=send my port: %d\n", port);
 
@@ -98,7 +95,6 @@ void receiver(char *argv[])
 
     for (int j = 0; j < max_receiver; j++)
     {
-        // read(receive_sd, &receiver_ports[j], sizeof(receiver_ports[j]));
         printf("=read other receiver ip: %d\n", receiver_adrs[j]);
         printf("=read other receiver port: %d\n", receiver_ports[j]);
     }
@@ -108,13 +104,6 @@ void receiver(char *argv[])
     {
         receive_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
         memset(receive_buffer[a], 0, seg_size);
-    }
-
-    write_buffer = (char **)malloc(sizeof(char *) * seg_count);
-    for (int a = 0; a < seg_count; a++)
-    {
-        write_buffer[a] = (char *)malloc(sizeof(char) * seg_size);
-        memset(write_buffer[a], 0, seg_size);
     }
 
     if (max_receiver > 1)
@@ -254,12 +243,8 @@ void receiver(char *argv[])
     close(receive_p2p_accept_sd);
     close(receive_sd);
     for (int j = 0; j < seg_count; j++)
-    {
         free(receive_buffer[j]);
-        free(write_buffer[j]);
-    }
     free(receive_buffer);
-    free(write_buffer);
 }
 
 void *peer_send(void *arg)
@@ -333,7 +318,6 @@ void *peer_send(void *arg)
                 }
 
                 cur_cnt += send_pkt.size;
-                // time 측정을 위한 로직 필요!!!
             }
         }
     }
@@ -349,7 +333,7 @@ void *peer_receive(void *arg)
     int my_index = info.my_idx;
     int peer_index = info.peer_idx;
     char **final_buffer = info.final_buffer;
-    int my_seg_cnt = 0; // 내가 보낼 seg 개수
+    int my_seg_cnt = 0;
     int cur_cnt = 0;
     int i;
     long long cur_seg_size;

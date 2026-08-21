@@ -83,15 +83,11 @@ void sender(char *argv[])
             fread_cnt = fread((void *)tmp_buf, sizeof(char), seg_size, fp);
             if (fread_cnt < seg_size)
             {
-                tmp_buf[fread_cnt] = '\0';
                 memcpy(&fread_buffer[i][cur_cnt], tmp_buf, fread_cnt);
-                // strcat(fread_buffer[i], tmp_buf);
                 memset(tmp_buf, 0, sizeof(tmp_buf));
                 printf("=DEBUG= fread count: %d\ni: %d\n", fread_cnt, i);
-
                 break;
             }
-            tmp_buf[fread_cnt] = '\0';
             memcpy(&fread_buffer[i][cur_cnt], tmp_buf, fread_cnt);
             printf("=DEBUG= fread count: %d\ni: %d\n", fread_cnt, i);
 
@@ -127,7 +123,6 @@ void sender(char *argv[])
 
         // receivers ip, port 저장
         uint32_t real_receiver_ip;
-        // read_exact(receiver_sds[receiver_idx], &real_receiver_ip, sizeof(real_receiver_ip));
         read_exact(receiver_sds[receiver_idx], &tmp_port, sizeof(tmp_port));
         printf("=port: %d", tmp_port);
         receiver_adrs[receiver_idx] = receiver_adr.sin_addr.s_addr;
@@ -150,9 +145,7 @@ void sender(char *argv[])
 
         for (int j = 0; j < max_receiver; j++)
         {
-            // write(receiver_sds[i], &receiver_adrs[j], sizeof(receiver_adrs[j]));
             printf("=write ip to recevier: %d\n", receiver_adrs[j]);
-            // write(receiver_sds[i], &receiver_ports[j], sizeof(receiver_ports[j]));
             printf("=write port to recevier: %d\n", receiver_ports[j]);
         }
     }
